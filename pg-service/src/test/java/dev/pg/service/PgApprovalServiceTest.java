@@ -1,7 +1,9 @@
 package dev.pg.service;
 
 import dev.pg.approval.mapper.ApprovalMapper;
+import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
 import dev.pg.approval.service.ApprovalValidationService;
+import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.client.CardAuthorizationClient;
 import dev.pg.dto.CardAuthorizationResponse;
 import dev.pg.dto.MerchantApprovalRequest;
@@ -30,11 +32,19 @@ class PgApprovalServiceTest {
 
     private final CardAuthorizationClient client = mock(CardAuthorizationClient.class);
     private final ApprovalMapper approvalMapper = mock(ApprovalMapper.class);
+    private final CardAuthorizationRequestFactory cardAuthorizationRequestFactory = mock(CardAuthorizationRequestFactory.class);
     private final ApprovalValidationService approvalValidationService = mock(ApprovalValidationService.class);
     private final IdempotencyService idempotencyService = mock(IdempotencyService.class);
     private final TransactionLedgerService transactionLedgerService = mock(TransactionLedgerService.class);
     private final PgApprovalService service =
-            new PgApprovalService(client, approvalMapper, approvalValidationService, idempotencyService, transactionLedgerService);
+            new PgApprovalService(
+                    client,
+                    approvalMapper,
+                    cardAuthorizationRequestFactory,
+                    approvalValidationService,
+                    idempotencyService,
+                    transactionLedgerService
+            );
 
     @Test
     void shouldPersistAndMapApprovedResponse() {
@@ -78,11 +88,21 @@ class PgApprovalServiceTest {
                 .respondedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 5))
                 .approvedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 5))
                 .build();
+        CardAuthorizationRequest cardAuthorizationRequest = CardAuthorizationRequest.builder()
+                .transactionId("PG202603190001ABCDEF")
+                .cardNumber("4111111111111111")
+                .amount(new BigDecimal("10000"))
+                .merchantId("MERCHANT-001")
+                .terminalId(null)
+                .pin(null)
+                .build();
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
         when(transactionLedgerService.createPendingTransaction(request, "PG202603190001ABCDEF"))
                 .thenReturn(pendingTransaction);
         when(transactionLedgerService.markApproved(any(), any())).thenReturn(approvedTransaction);
+        when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
+                .thenReturn(cardAuthorizationRequest);
         when(approvalMapper.toMerchantApprovalResponse(approvedTransaction)).thenReturn(
                 MerchantApprovalResponse.builder()
                         .merchantTransactionId("M202603190001")
@@ -94,7 +114,7 @@ class PgApprovalServiceTest {
                         .approvedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 5))
                         .build()
         );
-        when(client.authorize(any())).thenReturn(CardAuthorizationResponse.builder()
+        when(client.authorize(cardAuthorizationRequest)).thenReturn(CardAuthorizationResponse.builder()
                 .transactionId("PG202603190001ABCDEF")
                 .approvalNumber("12345678")
                 .responseCode("00")
@@ -169,7 +189,6 @@ class PgApprovalServiceTest {
     void shouldValidateRequiredFields() {
         MerchantApprovalRequest invalidRequest = MerchantApprovalRequest.builder().build();
 
-        when(idempotencyService.findExistingTransaction(null)).thenReturn(Optional.empty());
         org.mockito.Mockito.doThrow(new IllegalArgumentException("merchantTransactionId is required"))
                 .when(approvalValidationService).validate(invalidRequest);
 

@@ -1,6 +1,7 @@
 package dev.pg.service;
 
 import dev.pg.approval.mapper.ApprovalMapper;
+import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
 import dev.pg.approval.service.ApprovalValidationService;
 import dev.pg.client.CardAuthorizationClient;
 import dev.pg.dto.CardAuthorizationRequest;
@@ -24,6 +25,7 @@ public class PgApprovalService {
 
     private final CardAuthorizationClient cardAuthorizationClient;
     private final ApprovalMapper approvalMapper;
+    private final CardAuthorizationRequestFactory cardAuthorizationRequestFactory;
     private final ApprovalValidationService approvalValidationService;
     private final IdempotencyService idempotencyService;
     private final TransactionLedgerService transactionLedgerService;
@@ -31,12 +33,14 @@ public class PgApprovalService {
     public PgApprovalService(
             CardAuthorizationClient cardAuthorizationClient,
             ApprovalMapper approvalMapper,
+            CardAuthorizationRequestFactory cardAuthorizationRequestFactory,
             ApprovalValidationService approvalValidationService,
             IdempotencyService idempotencyService,
             TransactionLedgerService transactionLedgerService
     ) {
         this.cardAuthorizationClient = cardAuthorizationClient;
         this.approvalMapper = approvalMapper;
+        this.cardAuthorizationRequestFactory = cardAuthorizationRequestFactory;
         this.approvalValidationService = approvalValidationService;
         this.idempotencyService = idempotencyService;
         this.transactionLedgerService = transactionLedgerService;
@@ -53,14 +57,7 @@ public class PgApprovalService {
 
         String pgTransactionId = generatePgTransactionId();
         PaymentTransaction transaction = transactionLedgerService.createPendingTransaction(request, pgTransactionId);
-        CardAuthorizationRequest cardRequest = CardAuthorizationRequest.builder()
-                .transactionId(pgTransactionId)
-                .cardNumber(request.getCardNumber())
-                .amount(request.getAmount())
-                .merchantId(request.getMerchantId())
-                .terminalId(null)
-                .pin(null)
-                .build();
+        CardAuthorizationRequest cardRequest = cardAuthorizationRequestFactory.create(request, pgTransactionId);
 
         try {
             CardAuthorizationResponse cardResponse = cardAuthorizationClient.authorize(cardRequest);
