@@ -151,6 +151,102 @@ class PgApprovalFacadeTest {
     }
 
     @Test
+    void shouldCreatePendingTransactionWithSecondAcquirerForMastercard() {
+        MerchantApprovalRequest request = MerchantApprovalRequest.builder()
+                .merchantTransactionId("M202603190002")
+                .merchantId("MERCHANT-001")
+                .cardNumber("5555555555554444")
+                .expiryDate("2712")
+                .amount(new BigDecimal("10000"))
+                .currency("KRW")
+                .mti("0100")
+                .processingCode("000000")
+                .transmissionDateTime("20260319153100")
+                .stan("123457")
+                .build();
+
+        PaymentTransaction pendingTransaction = PaymentTransaction.builder()
+                .pgTransactionId("PG202603190002ABCDEF")
+                .merchantTransactionId("M202603190002")
+                .merchantId("MERCHANT-001")
+                .maskedCardNumber("555555******4444")
+                .amount(new BigDecimal("10000"))
+                .currency("KRW")
+                .acquirerType(AcquirerType.CARD_AUTHORIZATION_SERVICE_2)
+                .approvalStatus(ApprovalStatus.PENDING)
+                .settlementStatus(SettlementStatus.NOT_READY)
+                .requestedAt(LocalDateTime.of(2026, 3, 19, 15, 31, 0))
+                .build();
+        PaymentTransaction approvedTransaction = PaymentTransaction.builder()
+                .pgTransactionId("PG202603190002ABCDEF")
+                .merchantTransactionId("M202603190002")
+                .merchantId("MERCHANT-001")
+                .maskedCardNumber("555555******4444")
+                .amount(new BigDecimal("10000"))
+                .currency("KRW")
+                .acquirerType(AcquirerType.CARD_AUTHORIZATION_SERVICE_2)
+                .approvalStatus(ApprovalStatus.APPROVED)
+                .settlementStatus(SettlementStatus.READY)
+                .responseCode("00")
+                .message("Approved")
+                .approvalNumber("87654321")
+                .requestedAt(LocalDateTime.of(2026, 3, 19, 15, 31, 0))
+                .respondedAt(LocalDateTime.of(2026, 3, 19, 15, 31, 5))
+                .approvedAt(LocalDateTime.of(2026, 3, 19, 15, 31, 5))
+                .build();
+        CardAuthorizationRequest cardAuthorizationRequest = CardAuthorizationRequest.builder()
+                .transactionId("PG202603190002ABCDEF")
+                .cardNumber("5555555555554444")
+                .amount(new BigDecimal("10000"))
+                .merchantId("MERCHANT-001")
+                .build();
+
+        when(idempotencyService.findExistingTransaction("M202603190002")).thenReturn(Optional.empty());
+        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190002ABCDEF");
+        when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService2());
+        when(transactionLedgerService.createPendingTransaction(
+                request,
+                "PG202603190002ABCDEF",
+                AcquirerType.CARD_AUTHORIZATION_SERVICE_2
+        )).thenReturn(pendingTransaction);
+        when(cardAuthorizationRequestFactory.create(request, "PG202603190002ABCDEF"))
+                .thenReturn(cardAuthorizationRequest);
+        when(acquirerRoutingService.authorize(RoutingTarget.cardAuthorizationService2(), cardAuthorizationRequest))
+                .thenReturn(CardAuthorizationResponse.builder()
+                        .transactionId("PG202603190002ABCDEF")
+                        .approvalNumber("87654321")
+                        .responseCode("00")
+                        .message("Approved")
+                        .amount(new BigDecimal("10000"))
+                        .authorizationDate(LocalDateTime.of(2026, 3, 19, 15, 31, 5))
+                        .approved(true)
+                        .build());
+        when(transactionLedgerService.markApproved(eq(pendingTransaction), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(approvedTransaction);
+        when(approvalMapper.toMerchantApprovalResponse(approvedTransaction)).thenReturn(
+                MerchantApprovalResponse.builder()
+                        .merchantTransactionId("M202603190002")
+                        .pgTransactionId("PG202603190002ABCDEF")
+                        .approved(true)
+                        .responseCode("00")
+                        .message("Approved")
+                        .approvalNumber("87654321")
+                        .approvedAt(LocalDateTime.of(2026, 3, 19, 15, 31, 5))
+                        .build()
+        );
+
+        MerchantApprovalResponse response = facade.approve(request);
+
+        assertTrue(response.isApproved());
+        verify(transactionLedgerService).createPendingTransaction(
+                request,
+                "PG202603190002ABCDEF",
+                AcquirerType.CARD_AUTHORIZATION_SERVICE_2
+        );
+        verify(acquirerRoutingService).authorize(RoutingTarget.cardAuthorizationService2(), cardAuthorizationRequest);
+    }
+
+    @Test
     void shouldReturnExistingTransactionForDuplicateMerchantTransactionId() {
         PaymentTransaction existingTransaction = PaymentTransaction.builder()
                 .pgTransactionId("PG202603190001ABCDEF")
