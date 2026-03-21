@@ -35,3 +35,13 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Local runtime files ###
+.env
+.env.*
+!.env.example
+logs/
+pg-service-data/
+*.mv.db
+*.trace.db
+*.h2.db
