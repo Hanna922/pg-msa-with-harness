@@ -1,5 +1,6 @@
 package dev.pg.service;
 
+import dev.pg.approval.service.ApprovalValidationService;
 import dev.pg.client.CardAuthorizationClient;
 import dev.pg.dto.CardAuthorizationResponse;
 import dev.pg.dto.MerchantApprovalRequest;
@@ -27,10 +28,11 @@ import static org.mockito.Mockito.when;
 class PgApprovalServiceTest {
 
     private final CardAuthorizationClient client = mock(CardAuthorizationClient.class);
+    private final ApprovalValidationService approvalValidationService = mock(ApprovalValidationService.class);
     private final IdempotencyService idempotencyService = mock(IdempotencyService.class);
     private final TransactionLedgerService transactionLedgerService = mock(TransactionLedgerService.class);
     private final PgApprovalService service =
-            new PgApprovalService(client, idempotencyService, transactionLedgerService);
+            new PgApprovalService(client, approvalValidationService, idempotencyService, transactionLedgerService);
 
     @Test
     void shouldPersistAndMapApprovedResponse() {
@@ -142,6 +144,10 @@ class PgApprovalServiceTest {
     @Test
     void shouldValidateRequiredFields() {
         MerchantApprovalRequest invalidRequest = MerchantApprovalRequest.builder().build();
+
+        when(idempotencyService.findExistingTransaction(null)).thenReturn(Optional.empty());
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("merchantTransactionId is required"))
+                .when(approvalValidationService).validate(invalidRequest);
 
         assertThrows(IllegalArgumentException.class, () -> service.approve(invalidRequest));
     }

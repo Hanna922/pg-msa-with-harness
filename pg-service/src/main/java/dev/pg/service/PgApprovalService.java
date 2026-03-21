@@ -1,5 +1,6 @@
 package dev.pg.service;
 
+import dev.pg.approval.service.ApprovalValidationService;
 import dev.pg.client.CardAuthorizationClient;
 import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
@@ -22,21 +23,24 @@ public class PgApprovalService {
     private static final DateTimeFormatter PG_TX_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     private final CardAuthorizationClient cardAuthorizationClient;
+    private final ApprovalValidationService approvalValidationService;
     private final IdempotencyService idempotencyService;
     private final TransactionLedgerService transactionLedgerService;
 
     public PgApprovalService(
             CardAuthorizationClient cardAuthorizationClient,
+            ApprovalValidationService approvalValidationService,
             IdempotencyService idempotencyService,
             TransactionLedgerService transactionLedgerService
     ) {
         this.cardAuthorizationClient = cardAuthorizationClient;
+        this.approvalValidationService = approvalValidationService;
         this.idempotencyService = idempotencyService;
         this.transactionLedgerService = transactionLedgerService;
     }
 
     public MerchantApprovalResponse approve(MerchantApprovalRequest request) {
-        validateRequest(request);
+        approvalValidationService.validate(request);
 
         Optional<PaymentTransaction> existingTransaction =
                 idempotencyService.findExistingTransaction(request.getMerchantTransactionId());
@@ -84,33 +88,5 @@ public class PgApprovalService {
         String timestamp = LocalDateTime.now().format(PG_TX_TIMESTAMP);
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
         return "PG" + timestamp + suffix;
-    }
-
-    private void validateRequest(MerchantApprovalRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Request body is required");
-        }
-        if (isBlank(request.getMerchantTransactionId())) {
-            throw new IllegalArgumentException("merchantTransactionId is required");
-        }
-        if (isBlank(request.getMerchantId())) {
-            throw new IllegalArgumentException("merchantId is required");
-        }
-        if (isBlank(request.getCardNumber())) {
-            throw new IllegalArgumentException("cardNumber is required");
-        }
-        if (isBlank(request.getExpiryDate())) {
-            throw new IllegalArgumentException("expiryDate is required");
-        }
-        if (request.getAmount() == null || request.getAmount().signum() <= 0) {
-            throw new IllegalArgumentException("amount must be greater than zero");
-        }
-        if (isBlank(request.getCurrency())) {
-            throw new IllegalArgumentException("currency is required");
-        }
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
     }
 }
