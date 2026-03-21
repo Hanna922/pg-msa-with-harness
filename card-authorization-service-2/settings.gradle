@@ -1,0 +1,3 @@
+rootProject.name = 'card-authorization-service-2'
+include ':common'
+project(':common').projectDir = file('../common')
