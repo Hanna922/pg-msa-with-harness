@@ -115,4 +115,69 @@ class PgApprovalControllerTest {
                 .andExpect(jsonPath("$.responseCode").value("96"))
                 .andExpect(jsonPath("$.message").value("PG approval processing failed"));
     }
+
+    @Test
+    void shouldReturnServiceUnavailableWhenCommunicationFailureOccurs() throws Exception {
+        MerchantApprovalRequest request = createRequest("M202603210013");
+
+        when(pgApprovalFacade.approve(any())).thenThrow(new BusinessException(
+                ErrorCode.CARD_AUTH_COMMUNICATION_FAILURE,
+                "Card authorization service communication failed"
+        ));
+
+        mockMvc.perform(post("/api/pg/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.approved").value(false))
+                .andExpect(jsonPath("$.responseCode").value("96"))
+                .andExpect(jsonPath("$.message").value("Card authorization service communication failed"));
+    }
+
+    @Test
+    void shouldReturnBadGatewayWhenDownstreamFailureOccurs() throws Exception {
+        MerchantApprovalRequest request = createRequest("M202603210014");
+
+        when(pgApprovalFacade.approve(any())).thenThrow(new BusinessException(
+                ErrorCode.CARD_AUTH_DOWNSTREAM_FAILURE,
+                "Card authorization service returned HTTP 503"
+        ));
+
+        mockMvc.perform(post("/api/pg/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.approved").value(false))
+                .andExpect(jsonPath("$.responseCode").value("96"))
+                .andExpect(jsonPath("$.message").value("Card authorization service returned HTTP 503"));
+    }
+
+    @Test
+    void shouldReturnTooManyRequestsWhenCircuitBreakerIsOpen() throws Exception {
+        MerchantApprovalRequest request = createRequest("M202603210015");
+
+        when(pgApprovalFacade.approve(any())).thenThrow(new BusinessException(
+                ErrorCode.CARD_AUTH_CIRCUIT_OPEN,
+                "Card authorization circuit breaker is open"
+        ));
+
+        mockMvc.perform(post("/api/pg/approve")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.approved").value(false))
+                .andExpect(jsonPath("$.responseCode").value("96"))
+                .andExpect(jsonPath("$.message").value("Card authorization circuit breaker is open"));
+    }
+
+    private MerchantApprovalRequest createRequest(String merchantTransactionId) {
+        return MerchantApprovalRequest.builder()
+                .merchantTransactionId(merchantTransactionId)
+                .merchantId("MERCHANT-001")
+                .cardNumber("4111111111111111")
+                .expiryDate("2712")
+                .amount(new BigDecimal("10000"))
+                .currency("KRW")
+                .build();
+    }
 }
