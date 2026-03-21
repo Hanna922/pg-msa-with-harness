@@ -1,8 +1,7 @@
-package dev.pg.service;
+package dev.pg.approval.service;
 
 import dev.pg.approval.mapper.ApprovalMapper;
 import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
-import dev.pg.approval.service.ApprovalValidationService;
 import dev.pg.client.CardAuthorizationClient;
 import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
@@ -13,15 +12,10 @@ import dev.pg.ledger.service.IdempotencyService;
 import dev.pg.ledger.service.TransactionLedgerService;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Optional;
-import java.util.UUID;
 
 @Service
-public class PgApprovalService {
-
-    private static final DateTimeFormatter PG_TX_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+public class PgApprovalFacade {
 
     private final CardAuthorizationClient cardAuthorizationClient;
     private final ApprovalMapper approvalMapper;
@@ -29,14 +23,16 @@ public class PgApprovalService {
     private final ApprovalValidationService approvalValidationService;
     private final IdempotencyService idempotencyService;
     private final TransactionLedgerService transactionLedgerService;
+    private final PgTransactionIdGenerator pgTransactionIdGenerator;
 
-    public PgApprovalService(
+    public PgApprovalFacade(
             CardAuthorizationClient cardAuthorizationClient,
             ApprovalMapper approvalMapper,
             CardAuthorizationRequestFactory cardAuthorizationRequestFactory,
             ApprovalValidationService approvalValidationService,
             IdempotencyService idempotencyService,
-            TransactionLedgerService transactionLedgerService
+            TransactionLedgerService transactionLedgerService,
+            PgTransactionIdGenerator pgTransactionIdGenerator
     ) {
         this.cardAuthorizationClient = cardAuthorizationClient;
         this.approvalMapper = approvalMapper;
@@ -44,6 +40,7 @@ public class PgApprovalService {
         this.approvalValidationService = approvalValidationService;
         this.idempotencyService = idempotencyService;
         this.transactionLedgerService = transactionLedgerService;
+        this.pgTransactionIdGenerator = pgTransactionIdGenerator;
     }
 
     public MerchantApprovalResponse approve(MerchantApprovalRequest request) {
@@ -55,7 +52,7 @@ public class PgApprovalService {
             return approvalMapper.toMerchantApprovalResponse(existingTransaction.get());
         }
 
-        String pgTransactionId = generatePgTransactionId();
+        String pgTransactionId = pgTransactionIdGenerator.generate();
         PaymentTransaction transaction = transactionLedgerService.createPendingTransaction(request, pgTransactionId);
         CardAuthorizationRequest cardRequest = cardAuthorizationRequestFactory.create(request, pgTransactionId);
 
@@ -70,11 +67,5 @@ public class PgApprovalService {
                     transactionLedgerService.markTimeout(transaction, "PG approval processing failed");
             return approvalMapper.toMerchantApprovalResponse(timedOutTransaction);
         }
-    }
-
-    String generatePgTransactionId() {
-        String timestamp = LocalDateTime.now().format(PG_TX_TIMESTAMP);
-        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 6).toUpperCase();
-        return "PG" + timestamp + suffix;
     }
 }

@@ -1,10 +1,9 @@
-package dev.pg.service;
+package dev.pg.approval.service;
 
 import dev.pg.approval.mapper.ApprovalMapper;
 import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
-import dev.pg.approval.service.ApprovalValidationService;
-import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.client.CardAuthorizationClient;
+import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
 import dev.pg.dto.MerchantApprovalRequest;
 import dev.pg.dto.MerchantApprovalResponse;
@@ -20,7 +19,6 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -28,7 +26,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-class PgApprovalServiceTest {
+class PgApprovalFacadeTest {
 
     private final CardAuthorizationClient client = mock(CardAuthorizationClient.class);
     private final ApprovalMapper approvalMapper = mock(ApprovalMapper.class);
@@ -36,14 +34,16 @@ class PgApprovalServiceTest {
     private final ApprovalValidationService approvalValidationService = mock(ApprovalValidationService.class);
     private final IdempotencyService idempotencyService = mock(IdempotencyService.class);
     private final TransactionLedgerService transactionLedgerService = mock(TransactionLedgerService.class);
-    private final PgApprovalService service =
-            new PgApprovalService(
+    private final PgTransactionIdGenerator pgTransactionIdGenerator = mock(PgTransactionIdGenerator.class);
+    private final PgApprovalFacade facade =
+            new PgApprovalFacade(
                     client,
                     approvalMapper,
                     cardAuthorizationRequestFactory,
                     approvalValidationService,
                     idempotencyService,
-                    transactionLedgerService
+                    transactionLedgerService,
+                    pgTransactionIdGenerator
             );
 
     @Test
@@ -98,6 +98,7 @@ class PgApprovalServiceTest {
                 .build();
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
+        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
         when(transactionLedgerService.createPendingTransaction(request, "PG202603190001ABCDEF"))
                 .thenReturn(pendingTransaction);
         when(transactionLedgerService.markApproved(any(), any())).thenReturn(approvedTransaction);
@@ -124,10 +125,7 @@ class PgApprovalServiceTest {
                 .approved(true)
                 .build());
 
-        PgApprovalService spyService = org.mockito.Mockito.spy(service);
-        org.mockito.Mockito.doReturn("PG202603190001ABCDEF").when(spyService).generatePgTransactionId();
-
-        MerchantApprovalResponse response = spyService.approve(request);
+        MerchantApprovalResponse response = facade.approve(request);
 
         assertEquals("M202603190001", response.getMerchantTransactionId());
         assertEquals("PG202603190001ABCDEF", response.getPgTransactionId());
@@ -178,11 +176,11 @@ class PgApprovalServiceTest {
                         .build()
         );
 
-        MerchantApprovalResponse response = service.approve(request);
+        MerchantApprovalResponse response = facade.approve(request);
 
         assertEquals("PG202603190001ABCDEF", response.getPgTransactionId());
         assertTrue(response.isApproved());
-        verifyNoInteractions(client, transactionLedgerService);
+        verifyNoInteractions(client, transactionLedgerService, pgTransactionIdGenerator);
     }
 
     @Test
@@ -192,6 +190,6 @@ class PgApprovalServiceTest {
         org.mockito.Mockito.doThrow(new IllegalArgumentException("merchantTransactionId is required"))
                 .when(approvalValidationService).validate(invalidRequest);
 
-        assertThrows(IllegalArgumentException.class, () -> service.approve(invalidRequest));
+        assertThrows(IllegalArgumentException.class, () -> facade.approve(invalidRequest));
     }
 }

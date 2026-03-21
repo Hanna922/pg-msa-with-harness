@@ -1,8 +1,8 @@
 package dev.pg.controller;
 
+import dev.pg.approval.service.PgApprovalFacade;
 import dev.pg.dto.MerchantApprovalRequest;
 import dev.pg.dto.MerchantApprovalResponse;
-import dev.pg.service.PgApprovalService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,16 +16,16 @@ import java.time.LocalDateTime;
 @RequestMapping("/api/pg")
 public class PgApprovalController {
 
-    private final PgApprovalService pgApprovalService;
+    private final PgApprovalFacade pgApprovalFacade;
 
-    public PgApprovalController(PgApprovalService pgApprovalService) {
-        this.pgApprovalService = pgApprovalService;
+    public PgApprovalController(PgApprovalFacade pgApprovalFacade) {
+        this.pgApprovalFacade = pgApprovalFacade;
     }
 
     @PostMapping("/approve")
     public ResponseEntity<MerchantApprovalResponse> approve(@RequestBody MerchantApprovalRequest request) {
         try {
-            return ResponseEntity.ok(pgApprovalService.approve(request));
+            return ResponseEntity.ok(pgApprovalFacade.approve(request));
         } catch (IllegalArgumentException e) {
             MerchantApprovalResponse response = MerchantApprovalResponse.builder()
                     .merchantTransactionId(request != null ? request.getMerchantTransactionId() : null)
