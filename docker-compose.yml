@@ -1,0 +1,124 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 1234
+      MYSQL_DATABASE: merchant_db
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - msa-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p1234"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  eureka-server:
+    build: ./eureka-server
+    container_name: eureka-server
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8761:8761"
+    networks:
+      - msa-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  bank-service:
+    build:
+      context: .
+      dockerfile: bank-service/Dockerfile
+    container_name: bank-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    expose:
+      - "8080"
+    networks:
+      - msa-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+
+  card-authorization-service:
+    build:
+      context: .
+      dockerfile: card-authorization-service/Dockerfile
+    container_name: card-authorization-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    expose:
+      - "9090"
+    networks:
+      - msa-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+      bank-service:
+        condition: service_started
+
+  pg-service:
+    build: ./pg-service
+    container_name: pg-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    expose:
+      - "8081"
+    networks:
+      - msa-net
+    depends_on:
+      eureka-server:
+        condition: service_started
+      card-authorization-service:
+        condition: service_started
+
+  merchant-service:
+    build: ./merchant-service
+    container_name: merchant-service
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    expose:
+      - "7070"
+    networks:
+      - msa-net
+    depends_on:
+      mysql:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+      pg-service:
+        condition: service_started
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8000:8000"
+    networks:
+      - msa-net
+    depends_on:
+      eureka-server:
+        condition: service_started
+      merchant-service:
+        condition: service_started
+
+networks:
+  msa-net:
+
+volumes:
+  mysql-data:
