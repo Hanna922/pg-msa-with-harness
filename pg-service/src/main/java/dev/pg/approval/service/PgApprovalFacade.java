@@ -11,6 +11,7 @@ import dev.pg.dto.MerchantApprovalResponse;
 import dev.pg.ledger.entity.PaymentTransaction;
 import dev.pg.ledger.service.IdempotencyService;
 import dev.pg.ledger.service.TransactionLedgerService;
+import dev.pg.routing.model.RoutingTarget;
 import dev.pg.routing.service.AcquirerRoutingService;
 import org.springframework.stereotype.Service;
 
@@ -55,11 +56,16 @@ public class PgApprovalFacade {
         }
 
         String pgTransactionId = pgTransactionIdGenerator.generate();
-        PaymentTransaction transaction = transactionLedgerService.createPendingTransaction(request, pgTransactionId);
+        RoutingTarget routingTarget = acquirerRoutingService.resolveRoutingTarget(request);
+        PaymentTransaction transaction = transactionLedgerService.createPendingTransaction(
+                request,
+                pgTransactionId,
+                routingTarget.acquirerType()
+        );
         CardAuthorizationRequest cardRequest = cardAuthorizationRequestFactory.create(request, pgTransactionId);
 
         try {
-            CardAuthorizationResponse cardResponse = acquirerRoutingService.authorize(request, cardRequest);
+            CardAuthorizationResponse cardResponse = acquirerRoutingService.authorize(routingTarget, cardRequest);
             PaymentTransaction updatedTransaction = cardResponse.isApproved()
                     ? transactionLedgerService.markApproved(transaction, cardResponse)
                     : transactionLedgerService.markFailed(transaction, cardResponse);

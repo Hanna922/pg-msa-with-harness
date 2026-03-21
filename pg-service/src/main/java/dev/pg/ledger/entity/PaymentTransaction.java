@@ -2,6 +2,7 @@ package dev.pg.ledger.entity;
 
 import dev.pg.ledger.enums.ApprovalStatus;
 import dev.pg.ledger.enums.SettlementStatus;
+import dev.pg.routing.model.AcquirerType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -42,6 +43,10 @@ public class PaymentTransaction {
 
     @Column(nullable = false, length = 3)
     private String currency;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private AcquirerType acquirerType;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)

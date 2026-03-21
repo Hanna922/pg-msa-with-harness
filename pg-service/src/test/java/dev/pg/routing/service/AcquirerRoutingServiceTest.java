@@ -38,6 +38,7 @@ class AcquirerRoutingServiceTest {
     void shouldAuthorizeThroughCardAuthorizationClient() {
         MerchantApprovalRequest merchantRequest = createMerchantRequest();
         CardAuthorizationRequest authorizationRequest = createAuthorizationRequest();
+        RoutingTarget routingTarget = RoutingTarget.cardAuthorizationService();
         CardAuthorizationResponse response = CardAuthorizationResponse.builder()
                 .transactionId("PG202603210001ABCDEF")
                 .responseCode("00")
@@ -45,13 +46,11 @@ class AcquirerRoutingServiceTest {
                 .approved(true)
                 .build();
 
-        when(routingPolicy.route(merchantRequest)).thenReturn(RoutingTarget.cardAuthorizationService());
         when(acquirerClientA.authorize(authorizationRequest)).thenReturn(response);
 
-        CardAuthorizationResponse actual = acquirerRoutingService.authorize(merchantRequest, authorizationRequest);
+        CardAuthorizationResponse actual = acquirerRoutingService.authorize(routingTarget, authorizationRequest);
 
         assertEquals("00", actual.getResponseCode());
-        verify(routingPolicy).route(merchantRequest);
         verify(acquirerClientA).authorize(authorizationRequest);
         verify(acquirerClientB, never()).authorize(authorizationRequest);
     }
@@ -60,6 +59,7 @@ class AcquirerRoutingServiceTest {
     void shouldAuthorizeThroughSecondAcquirerClient() {
         MerchantApprovalRequest merchantRequest = createMerchantRequest();
         CardAuthorizationRequest authorizationRequest = createAuthorizationRequest();
+        RoutingTarget routingTarget = RoutingTarget.cardAuthorizationService2();
         CardAuthorizationResponse response = CardAuthorizationResponse.builder()
                 .transactionId("PG202603210001ABCDEF")
                 .responseCode("00")
@@ -67,35 +67,42 @@ class AcquirerRoutingServiceTest {
                 .approved(true)
                 .build();
 
-        when(routingPolicy.route(merchantRequest)).thenReturn(RoutingTarget.cardAuthorizationService2());
         when(acquirerClientB.authorize(authorizationRequest)).thenReturn(response);
 
-        CardAuthorizationResponse actual = acquirerRoutingService.authorize(merchantRequest, authorizationRequest);
+        CardAuthorizationResponse actual = acquirerRoutingService.authorize(routingTarget, authorizationRequest);
 
         assertEquals("00", actual.getResponseCode());
         assertEquals("Approved by second acquirer", actual.getMessage());
-        verify(routingPolicy).route(merchantRequest);
         verify(acquirerClientB).authorize(authorizationRequest);
         verify(acquirerClientA, never()).authorize(authorizationRequest);
     }
 
     @Test
     void shouldThrowBusinessExceptionForUnsupportedTarget() {
-        MerchantApprovalRequest merchantRequest = createMerchantRequest();
         CardAuthorizationRequest authorizationRequest = createAuthorizationRequest();
-
-        when(routingPolicy.route(merchantRequest)).thenReturn(new RoutingTarget(null, "unknown"));
+        RoutingTarget routingTarget = new RoutingTarget(null, "unknown");
 
         BusinessException exception = assertThrows(
                 BusinessException.class,
-                () -> acquirerRoutingService.authorize(merchantRequest, authorizationRequest)
+                () -> acquirerRoutingService.authorize(routingTarget, authorizationRequest)
         );
 
         assertEquals(ErrorCode.INTERNAL_ERROR, exception.getErrorCode());
         assertEquals("Unsupported routing target: null", exception.getMessage());
-        verify(routingPolicy).route(merchantRequest);
         verify(acquirerClientA, never()).authorize(authorizationRequest);
         verify(acquirerClientB, never()).authorize(authorizationRequest);
+    }
+
+    @Test
+    void shouldResolveRoutingTargetThroughPolicy() {
+        MerchantApprovalRequest merchantRequest = createMerchantRequest();
+
+        when(routingPolicy.route(merchantRequest)).thenReturn(RoutingTarget.cardAuthorizationService2());
+
+        RoutingTarget actual = acquirerRoutingService.resolveRoutingTarget(merchantRequest);
+
+        assertEquals(AcquirerType.CARD_AUTHORIZATION_SERVICE_2, actual.acquirerType());
+        verify(routingPolicy).route(merchantRequest);
     }
 
     private MerchantApprovalRequest createMerchantRequest() {

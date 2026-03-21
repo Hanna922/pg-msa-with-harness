@@ -6,6 +6,7 @@ import dev.pg.ledger.entity.PaymentTransaction;
 import dev.pg.ledger.enums.ApprovalStatus;
 import dev.pg.ledger.enums.SettlementStatus;
 import dev.pg.ledger.repository.PaymentTransactionRepository;
+import dev.pg.routing.model.AcquirerType;
 import dev.pg.support.util.CardMaskingUtils;
 import org.springframework.stereotype.Service;
 
@@ -20,7 +21,11 @@ public class TransactionLedgerService {
         this.paymentTransactionRepository = paymentTransactionRepository;
     }
 
-    public PaymentTransaction createPendingTransaction(MerchantApprovalRequest request, String pgTransactionId) {
+    public PaymentTransaction createPendingTransaction(
+            MerchantApprovalRequest request,
+            String pgTransactionId,
+            AcquirerType acquirerType
+    ) {
         PaymentTransaction transaction = PaymentTransaction.builder()
                 .pgTransactionId(pgTransactionId)
                 .merchantTransactionId(request.getMerchantTransactionId())
@@ -28,6 +33,7 @@ public class TransactionLedgerService {
                 .maskedCardNumber(CardMaskingUtils.mask(request.getCardNumber()))
                 .amount(request.getAmount())
                 .currency(request.getCurrency())
+                .acquirerType(acquirerType)
                 .approvalStatus(ApprovalStatus.PENDING)
                 .settlementStatus(SettlementStatus.NOT_READY)
                 .requestedAt(LocalDateTime.now())

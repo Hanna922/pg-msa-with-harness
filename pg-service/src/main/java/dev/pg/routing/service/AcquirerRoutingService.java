@@ -33,10 +33,9 @@ public class AcquirerRoutingService {
     }
 
     public CardAuthorizationResponse authorize(
-            MerchantApprovalRequest merchantRequest,
+            RoutingTarget routingTarget,
             CardAuthorizationRequest authorizationRequest
     ) {
-        RoutingTarget routingTarget = routingPolicy.route(merchantRequest);
         AcquirerClient acquirerClient = acquirerClients.get(routingTarget.acquirerType());
 
         if (acquirerClient != null) {
@@ -47,5 +46,9 @@ public class AcquirerRoutingService {
                 ErrorCode.INTERNAL_ERROR,
                 "Unsupported routing target: " + routingTarget.acquirerType()
         );
+    }
+
+    public RoutingTarget resolveRoutingTarget(MerchantApprovalRequest merchantRequest) {
+        return routingPolicy.route(merchantRequest);
     }
 }

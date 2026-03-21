@@ -13,6 +13,8 @@ import dev.pg.ledger.enums.ApprovalStatus;
 import dev.pg.ledger.enums.SettlementStatus;
 import dev.pg.ledger.service.IdempotencyService;
 import dev.pg.ledger.service.TransactionLedgerService;
+import dev.pg.routing.model.AcquirerType;
+import dev.pg.routing.model.RoutingTarget;
 import dev.pg.routing.service.AcquirerRoutingService;
 import dev.pg.support.exception.BusinessException;
 import dev.pg.support.exception.ErrorCode;
@@ -74,6 +76,7 @@ class PgApprovalFacadeTest {
                 .maskedCardNumber("411111******1111")
                 .amount(new BigDecimal("10000"))
                 .currency("KRW")
+                .acquirerType(AcquirerType.CARD_AUTHORIZATION_SERVICE)
                 .approvalStatus(ApprovalStatus.PENDING)
                 .settlementStatus(SettlementStatus.NOT_READY)
                 .requestedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 0))
@@ -85,6 +88,7 @@ class PgApprovalFacadeTest {
                 .maskedCardNumber("411111******1111")
                 .amount(new BigDecimal("10000"))
                 .currency("KRW")
+                .acquirerType(AcquirerType.CARD_AUTHORIZATION_SERVICE)
                 .approvalStatus(ApprovalStatus.APPROVED)
                 .settlementStatus(SettlementStatus.READY)
                 .responseCode("00")
@@ -105,7 +109,12 @@ class PgApprovalFacadeTest {
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
         when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
-        when(transactionLedgerService.createPendingTransaction(request, "PG202603190001ABCDEF"))
+        when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService());
+        when(transactionLedgerService.createPendingTransaction(
+                request,
+                "PG202603190001ABCDEF",
+                AcquirerType.CARD_AUTHORIZATION_SERVICE
+        ))
                 .thenReturn(pendingTransaction);
         when(transactionLedgerService.markApproved(any(), any())).thenReturn(approvedTransaction);
         when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
@@ -121,7 +130,7 @@ class PgApprovalFacadeTest {
                         .approvedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 5))
                         .build()
         );
-        when(acquirerRoutingService.authorize(request, cardAuthorizationRequest)).thenReturn(CardAuthorizationResponse.builder()
+        when(acquirerRoutingService.authorize(RoutingTarget.cardAuthorizationService(), cardAuthorizationRequest)).thenReturn(CardAuthorizationResponse.builder()
                 .transactionId("PG202603190001ABCDEF")
                 .approvalNumber("12345678")
                 .responseCode("00")
@@ -150,6 +159,7 @@ class PgApprovalFacadeTest {
                 .maskedCardNumber("411111******1111")
                 .amount(new BigDecimal("10000"))
                 .currency("KRW")
+                .acquirerType(AcquirerType.CARD_AUTHORIZATION_SERVICE)
                 .approvalStatus(ApprovalStatus.APPROVED)
                 .settlementStatus(SettlementStatus.READY)
                 .responseCode("00")
@@ -215,6 +225,7 @@ class PgApprovalFacadeTest {
                 .maskedCardNumber("411111******1111")
                 .amount(new BigDecimal("10000"))
                 .currency("KRW")
+                .acquirerType(AcquirerType.CARD_AUTHORIZATION_SERVICE)
                 .approvalStatus(ApprovalStatus.TIMEOUT)
                 .settlementStatus(SettlementStatus.NOT_READY)
                 .responseCode("96")
@@ -233,11 +244,16 @@ class PgApprovalFacadeTest {
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
         when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
-        when(transactionLedgerService.createPendingTransaction(request, "PG202603190001ABCDEF"))
+        when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService());
+        when(transactionLedgerService.createPendingTransaction(
+                request,
+                "PG202603190001ABCDEF",
+                AcquirerType.CARD_AUTHORIZATION_SERVICE
+        ))
                 .thenReturn(pendingTransaction);
         when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
                 .thenReturn(cardAuthorizationRequest);
-        when(acquirerRoutingService.authorize(request, cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
+        when(acquirerRoutingService.authorize(RoutingTarget.cardAuthorizationService(), cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
                 CardAuthorizationErrorType.COMMUNICATION_FAILURE,
                 "Card authorization service communication failed"
         ));
@@ -263,6 +279,7 @@ class PgApprovalFacadeTest {
                 .maskedCardNumber("411111******1111")
                 .amount(new BigDecimal("10000"))
                 .currency("KRW")
+                .acquirerType(AcquirerType.CARD_AUTHORIZATION_SERVICE)
                 .approvalStatus(ApprovalStatus.FAILED)
                 .settlementStatus(SettlementStatus.NOT_READY)
                 .responseCode("96")
@@ -281,11 +298,16 @@ class PgApprovalFacadeTest {
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
         when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
-        when(transactionLedgerService.createPendingTransaction(request, "PG202603190001ABCDEF"))
+        when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService());
+        when(transactionLedgerService.createPendingTransaction(
+                request,
+                "PG202603190001ABCDEF",
+                AcquirerType.CARD_AUTHORIZATION_SERVICE
+        ))
                 .thenReturn(pendingTransaction);
         when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
                 .thenReturn(cardAuthorizationRequest);
-        when(acquirerRoutingService.authorize(request, cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
+        when(acquirerRoutingService.authorize(RoutingTarget.cardAuthorizationService(), cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
                 CardAuthorizationErrorType.DOWNSTREAM_FAILURE,
                 "Card authorization service returned HTTP 503"
         ));
@@ -318,6 +340,7 @@ class PgApprovalFacadeTest {
                 .maskedCardNumber("411111******1111")
                 .amount(new BigDecimal("10000"))
                 .currency("KRW")
+                .acquirerType(AcquirerType.CARD_AUTHORIZATION_SERVICE)
                 .approvalStatus(ApprovalStatus.FAILED)
                 .settlementStatus(SettlementStatus.NOT_READY)
                 .responseCode("96")
@@ -336,11 +359,16 @@ class PgApprovalFacadeTest {
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
         when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
-        when(transactionLedgerService.createPendingTransaction(request, "PG202603190001ABCDEF"))
+        when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService());
+        when(transactionLedgerService.createPendingTransaction(
+                request,
+                "PG202603190001ABCDEF",
+                AcquirerType.CARD_AUTHORIZATION_SERVICE
+        ))
                 .thenReturn(pendingTransaction);
         when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
                 .thenReturn(cardAuthorizationRequest);
-        when(acquirerRoutingService.authorize(request, cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
+        when(acquirerRoutingService.authorize(RoutingTarget.cardAuthorizationService(), cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
                 CardAuthorizationErrorType.CIRCUIT_OPEN,
                 "Card authorization circuit breaker is open"
         ));
@@ -385,6 +413,7 @@ class PgApprovalFacadeTest {
                 .maskedCardNumber("411111******1111")
                 .amount(new BigDecimal("10000"))
                 .currency("KRW")
+                .acquirerType(AcquirerType.CARD_AUTHORIZATION_SERVICE)
                 .approvalStatus(ApprovalStatus.PENDING)
                 .settlementStatus(SettlementStatus.NOT_READY)
                 .requestedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 0))
