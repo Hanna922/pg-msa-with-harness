@@ -3,6 +3,7 @@ package dev.pg.approval.service;
 import dev.pg.approval.mapper.ApprovalMapper;
 import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
 import dev.pg.client.CardAuthorizationClient;
+import dev.pg.client.support.CardAuthorizationClientException;
 import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
 import dev.pg.dto.MerchantApprovalRequest;
@@ -62,9 +63,9 @@ public class PgApprovalFacade {
                     ? transactionLedgerService.markApproved(transaction, cardResponse)
                     : transactionLedgerService.markFailed(transaction, cardResponse);
             return approvalMapper.toMerchantApprovalResponse(updatedTransaction);
-        } catch (Exception e) {
+        } catch (CardAuthorizationClientException e) {
             PaymentTransaction timedOutTransaction =
-                    transactionLedgerService.markTimeout(transaction, "PG approval processing failed");
+                    transactionLedgerService.markTimeout(transaction, e.getMessage());
             return approvalMapper.toMerchantApprovalResponse(timedOutTransaction);
         }
     }
