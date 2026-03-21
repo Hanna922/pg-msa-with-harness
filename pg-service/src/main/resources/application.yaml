@@ -28,3 +28,9 @@ eureka:
     fetch-registry: true
   instance:
     prefer-ip-address: true
+
+pg:
+  client:
+    card-authorization:
+      connect-timeout-ms: ${PG_CARD_AUTH_CONNECT_TIMEOUT_MS:1000}
+      read-timeout-ms: ${PG_CARD_AUTH_READ_TIMEOUT_MS:3000}
