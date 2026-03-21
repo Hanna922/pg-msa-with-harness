@@ -2,7 +2,6 @@ package dev.pg.approval.service;
 
 import dev.pg.approval.mapper.ApprovalMapper;
 import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
-import dev.pg.client.CardAuthorizationClient;
 import dev.pg.client.support.CardAuthorizationClientException;
 import dev.pg.client.support.CardAuthorizationErrorType;
 import dev.pg.dto.CardAuthorizationRequest;
@@ -14,6 +13,7 @@ import dev.pg.ledger.enums.ApprovalStatus;
 import dev.pg.ledger.enums.SettlementStatus;
 import dev.pg.ledger.service.IdempotencyService;
 import dev.pg.ledger.service.TransactionLedgerService;
+import dev.pg.routing.service.AcquirerRoutingService;
 import dev.pg.support.exception.BusinessException;
 import dev.pg.support.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
@@ -34,7 +34,7 @@ import static org.mockito.Mockito.when;
 
 class PgApprovalFacadeTest {
 
-    private final CardAuthorizationClient client = mock(CardAuthorizationClient.class);
+    private final AcquirerRoutingService acquirerRoutingService = mock(AcquirerRoutingService.class);
     private final ApprovalMapper approvalMapper = mock(ApprovalMapper.class);
     private final CardAuthorizationRequestFactory cardAuthorizationRequestFactory = mock(CardAuthorizationRequestFactory.class);
     private final ApprovalValidationService approvalValidationService = mock(ApprovalValidationService.class);
@@ -43,7 +43,7 @@ class PgApprovalFacadeTest {
     private final PgTransactionIdGenerator pgTransactionIdGenerator = mock(PgTransactionIdGenerator.class);
     private final PgApprovalFacade facade =
             new PgApprovalFacade(
-                    client,
+                    acquirerRoutingService,
                     approvalMapper,
                     cardAuthorizationRequestFactory,
                     approvalValidationService,
@@ -121,7 +121,7 @@ class PgApprovalFacadeTest {
                         .approvedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 5))
                         .build()
         );
-        when(client.authorize(cardAuthorizationRequest)).thenReturn(CardAuthorizationResponse.builder()
+        when(acquirerRoutingService.authorize(request, cardAuthorizationRequest)).thenReturn(CardAuthorizationResponse.builder()
                 .transactionId("PG202603190001ABCDEF")
                 .approvalNumber("12345678")
                 .responseCode("00")
@@ -186,7 +186,7 @@ class PgApprovalFacadeTest {
 
         assertEquals("PG202603190001ABCDEF", response.getPgTransactionId());
         assertTrue(response.isApproved());
-        verifyNoInteractions(client, transactionLedgerService, pgTransactionIdGenerator);
+        verifyNoInteractions(acquirerRoutingService, transactionLedgerService, pgTransactionIdGenerator);
     }
 
     @Test
@@ -237,7 +237,7 @@ class PgApprovalFacadeTest {
                 .thenReturn(pendingTransaction);
         when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
                 .thenReturn(cardAuthorizationRequest);
-        when(client.authorize(cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
+        when(acquirerRoutingService.authorize(request, cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
                 CardAuthorizationErrorType.COMMUNICATION_FAILURE,
                 "Card authorization service communication failed"
         ));
@@ -285,7 +285,7 @@ class PgApprovalFacadeTest {
                 .thenReturn(pendingTransaction);
         when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
                 .thenReturn(cardAuthorizationRequest);
-        when(client.authorize(cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
+        when(acquirerRoutingService.authorize(request, cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
                 CardAuthorizationErrorType.DOWNSTREAM_FAILURE,
                 "Card authorization service returned HTTP 503"
         ));
@@ -340,7 +340,7 @@ class PgApprovalFacadeTest {
                 .thenReturn(pendingTransaction);
         when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
                 .thenReturn(cardAuthorizationRequest);
-        when(client.authorize(cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
+        when(acquirerRoutingService.authorize(request, cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
                 CardAuthorizationErrorType.CIRCUIT_OPEN,
                 "Card authorization circuit breaker is open"
         ));

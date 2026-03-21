@@ -2,7 +2,6 @@ package dev.pg.approval.service;
 
 import dev.pg.approval.mapper.ApprovalMapper;
 import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
-import dev.pg.client.CardAuthorizationClient;
 import dev.pg.client.support.CardAuthorizationClientException;
 import dev.pg.client.support.CardAuthorizationErrorType;
 import dev.pg.dto.CardAuthorizationRequest;
@@ -12,6 +11,7 @@ import dev.pg.dto.MerchantApprovalResponse;
 import dev.pg.ledger.entity.PaymentTransaction;
 import dev.pg.ledger.service.IdempotencyService;
 import dev.pg.ledger.service.TransactionLedgerService;
+import dev.pg.routing.service.AcquirerRoutingService;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -19,7 +19,7 @@ import java.util.Optional;
 @Service
 public class PgApprovalFacade {
 
-    private final CardAuthorizationClient cardAuthorizationClient;
+    private final AcquirerRoutingService acquirerRoutingService;
     private final ApprovalMapper approvalMapper;
     private final CardAuthorizationRequestFactory cardAuthorizationRequestFactory;
     private final ApprovalValidationService approvalValidationService;
@@ -28,7 +28,7 @@ public class PgApprovalFacade {
     private final PgTransactionIdGenerator pgTransactionIdGenerator;
 
     public PgApprovalFacade(
-            CardAuthorizationClient cardAuthorizationClient,
+            AcquirerRoutingService acquirerRoutingService,
             ApprovalMapper approvalMapper,
             CardAuthorizationRequestFactory cardAuthorizationRequestFactory,
             ApprovalValidationService approvalValidationService,
@@ -36,7 +36,7 @@ public class PgApprovalFacade {
             TransactionLedgerService transactionLedgerService,
             PgTransactionIdGenerator pgTransactionIdGenerator
     ) {
-        this.cardAuthorizationClient = cardAuthorizationClient;
+        this.acquirerRoutingService = acquirerRoutingService;
         this.approvalMapper = approvalMapper;
         this.cardAuthorizationRequestFactory = cardAuthorizationRequestFactory;
         this.approvalValidationService = approvalValidationService;
@@ -59,7 +59,7 @@ public class PgApprovalFacade {
         CardAuthorizationRequest cardRequest = cardAuthorizationRequestFactory.create(request, pgTransactionId);
 
         try {
-            CardAuthorizationResponse cardResponse = cardAuthorizationClient.authorize(cardRequest);
+            CardAuthorizationResponse cardResponse = acquirerRoutingService.authorize(request, cardRequest);
             PaymentTransaction updatedTransaction = cardResponse.isApproved()
                     ? transactionLedgerService.markApproved(transaction, cardResponse)
                     : transactionLedgerService.markFailed(transaction, cardResponse);
