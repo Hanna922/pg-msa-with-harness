@@ -1,6 +1,8 @@
 package dev.pg.approval.service;
 
 import dev.pg.dto.MerchantApprovalRequest;
+import dev.pg.support.exception.BusinessException;
+import dev.pg.support.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -37,11 +39,12 @@ class ApprovalValidationServiceTest {
                 .currency("KRW")
                 .build();
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        BusinessException exception = assertThrows(
+                BusinessException.class,
                 () -> approvalValidationService.validate(request)
         );
 
+        assertEquals(ErrorCode.INVALID_REQUEST, exception.getErrorCode());
         assertEquals("merchantTransactionId is required", exception.getMessage());
     }
 
@@ -56,11 +59,12 @@ class ApprovalValidationServiceTest {
                 .currency("KRW")
                 .build();
 
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
+        BusinessException exception = assertThrows(
+                BusinessException.class,
                 () -> approvalValidationService.validate(request)
         );
 
+        assertEquals(ErrorCode.INVALID_REQUEST, exception.getErrorCode());
         assertEquals("amount must be greater than zero", exception.getMessage());
     }
 }

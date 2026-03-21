@@ -14,6 +14,8 @@ import dev.pg.ledger.enums.ApprovalStatus;
 import dev.pg.ledger.enums.SettlementStatus;
 import dev.pg.ledger.service.IdempotencyService;
 import dev.pg.ledger.service.TransactionLedgerService;
+import dev.pg.support.exception.BusinessException;
+import dev.pg.support.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -191,10 +193,15 @@ class PgApprovalFacadeTest {
     void shouldValidateRequiredFields() {
         MerchantApprovalRequest invalidRequest = MerchantApprovalRequest.builder().build();
 
-        org.mockito.Mockito.doThrow(new IllegalArgumentException("merchantTransactionId is required"))
+        org.mockito.Mockito.doThrow(new BusinessException(
+                ErrorCode.INVALID_REQUEST,
+                "merchantTransactionId is required"
+        ))
                 .when(approvalValidationService).validate(invalidRequest);
 
-        assertThrows(IllegalArgumentException.class, () -> facade.approve(invalidRequest));
+        BusinessException exception = assertThrows(BusinessException.class, () -> facade.approve(invalidRequest));
+        assertEquals(ErrorCode.INVALID_REQUEST, exception.getErrorCode());
+        assertEquals("merchantTransactionId is required", exception.getMessage());
     }
 
     @Test
