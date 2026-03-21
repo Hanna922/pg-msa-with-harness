@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,6 +43,7 @@ class AcquirerRoutingServiceTest {
         CardAuthorizationResponse actual = acquirerRoutingService.authorize(merchantRequest, authorizationRequest);
 
         assertEquals("00", actual.getResponseCode());
+        verify(routingPolicy).route(merchantRequest);
         verify(cardAuthorizationClient).authorize(authorizationRequest);
     }
 
@@ -59,6 +61,8 @@ class AcquirerRoutingServiceTest {
 
         assertEquals(ErrorCode.INTERNAL_ERROR, exception.getErrorCode());
         assertEquals("Unsupported routing target: null", exception.getMessage());
+        verify(routingPolicy).route(merchantRequest);
+        verify(cardAuthorizationClient, never()).authorize(authorizationRequest);
     }
 
     private MerchantApprovalRequest createMerchantRequest() {
