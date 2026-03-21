@@ -4,9 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.pg.approval.service.PgApprovalFacade;
 import dev.pg.dto.MerchantApprovalRequest;
 import dev.pg.dto.MerchantApprovalResponse;
+import dev.pg.support.exception.BusinessException;
+import dev.pg.support.exception.ErrorCode;
+import dev.pg.support.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -21,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(PgApprovalController.class)
+@Import(GlobalExceptionHandler.class)
 class PgApprovalControllerTest {
 
     @Autowired
@@ -75,7 +80,10 @@ class PgApprovalControllerTest {
                 .currency("KRW")
                 .build();
 
-        when(pgApprovalFacade.approve(any())).thenThrow(new IllegalArgumentException("merchantTransactionId is required"));
+        when(pgApprovalFacade.approve(any())).thenThrow(new BusinessException(
+                ErrorCode.INVALID_REQUEST,
+                "merchantTransactionId is required"
+        ));
 
         mockMvc.perform(post("/api/pg/approve")
                         .contentType(MediaType.APPLICATION_JSON)
