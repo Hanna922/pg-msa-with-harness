@@ -36,3 +36,15 @@ pg:
       read-timeout-ms: ${PG_CARD_AUTH_READ_TIMEOUT_MS:3000}
       retry:
         max-attempts: ${PG_CARD_AUTH_RETRY_MAX_ATTEMPTS:2}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      cardAuthorization:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: ${PG_CARD_AUTH_CIRCUIT_BREAKER_SLIDING_WINDOW_SIZE:3}
+        minimum-number-of-calls: ${PG_CARD_AUTH_CIRCUIT_BREAKER_MINIMUM_NUMBER_OF_CALLS:3}
+        failure-rate-threshold: ${PG_CARD_AUTH_CIRCUIT_BREAKER_FAILURE_RATE_THRESHOLD:100}
+        wait-duration-in-open-state: ${PG_CARD_AUTH_CIRCUIT_BREAKER_WAIT_DURATION_IN_OPEN_STATE:10s}
+        permitted-number-of-calls-in-half-open-state: ${PG_CARD_AUTH_CIRCUIT_BREAKER_PERMITTED_CALLS_IN_HALF_OPEN:1}
+        automatic-transition-from-open-to-half-open-enabled: true

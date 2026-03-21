@@ -8,14 +8,21 @@ import dev.pg.dto.CardAuthorizationResponse;
 import feign.FeignException;
 import feign.Request;
 import feign.RequestTemplate;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.junit.jupiter.api.Test;
+import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
+import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -25,8 +32,23 @@ class CardAuthorizationClientTest {
 
     private final CardAuthorizationServiceClient serviceClient = mock(CardAuthorizationServiceClient.class);
     private final ExternalErrorTranslator externalErrorTranslator = new ExternalErrorTranslator();
-    private final CardAuthorizationClient client =
-            new CardAuthorizationClient(serviceClient, externalErrorTranslator, 2);
+    private final CircuitBreakerFactory<?, ?> circuitBreakerFactory = mock(CircuitBreakerFactory.class);
+    private final CircuitBreaker circuitBreaker = mock(CircuitBreaker.class);
+    private final CardAuthorizationClient client;
+
+    CardAuthorizationClientTest() {
+        when(circuitBreakerFactory.create("cardAuthorization")).thenReturn(circuitBreaker);
+        doAnswer(invocation -> {
+            Supplier<CardAuthorizationResponse> supplier = invocation.getArgument(0);
+            Function<Throwable, CardAuthorizationResponse> fallback = invocation.getArgument(1);
+            try {
+                return supplier.get();
+            } catch (Throwable throwable) {
+                return fallback.apply(throwable);
+            }
+        }).when(circuitBreaker).run(any(), any());
+        client = new CardAuthorizationClient(serviceClient, externalErrorTranslator, circuitBreakerFactory, 2);
+    }
 
     @Test
     void shouldThrowTranslatedExceptionForEmptyResponse() {
@@ -168,5 +190,30 @@ class CardAuthorizationClientTest {
         assertThrows(CardAuthorizationClientException.class, () -> client.authorize(request));
 
         verify(serviceClient, times(1)).authorize(request);
+    }
+
+    @Test
+    void shouldOpenCircuitBreakerAfterRepeatedFailures() {
+        CardAuthorizationRequest request = CardAuthorizationRequest.builder()
+                .transactionId("PG20260321200000ABCDEF")
+                .cardNumber("4111111111111111")
+                .amount(new BigDecimal("10000"))
+                .merchantId("MERCHANT-001")
+                .build();
+
+        doAnswer(invocation -> {
+            Function<Throwable, CardAuthorizationResponse> fallback = invocation.getArgument(1);
+            return fallback.apply(CallNotPermittedException.createCallNotPermittedException(
+                    io.github.resilience4j.circuitbreaker.CircuitBreaker.ofDefaults("cardAuthorization")
+            ));
+        }).when(circuitBreaker).run(any(), any());
+
+        CardAuthorizationClientException exception = assertThrows(
+                CardAuthorizationClientException.class,
+                () -> client.authorize(request)
+        );
+
+        assertEquals(CardAuthorizationErrorType.CIRCUIT_OPEN, exception.getErrorType());
+        verify(serviceClient, times(0)).authorize(request);
     }
 }
