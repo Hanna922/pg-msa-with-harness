@@ -6,150 +6,115 @@
 
 ## Scope Constraint ⚠️
 
-- **수정 대상: `pg-service` ONLY**
-- `card-authorization-service`, `bank-service`, `merchant-service`는 테스트용 스텁 서비스이다
-- 스텁 서비스의 API 스펙을 변경하지 않는다 (pg-service가 이 API에 맞춰야 한다)
-- `eureka-server`, `api-gateway`는 인프라 컴포넌트로 현행 유지한다
+- **수정 대상: `pg-service` ONLY** (Phase 6 BIN 기반 라우팅 구현)
+- **신규 생성 대상: `card-authorization-service-2`** (기존 card-authorization-service 복제, 테스트용 second acquirer)
+- `card-authorization-service`, `bank-service`, `merchant-service`, `api-gateway`, `eureka-server`는 기존 코드 수정 금지
+- 인프라 파일(`docker-compose.yml`, `docker/mysql/init/`)은 서비스 추가에 필요한 최소 변경만 허용
 
-## Architecture — Service Call Flow
+## Architecture — Service Call Flow (Phase 6 Target)
 
 ```
 Client
   │
   ▼
-api-gateway (:8000)          ← Spring Cloud Gateway WebMVC, /api/merchant/** 라우팅
+api-gateway (:8000)
   │
   ▼
-merchant-service (:7070)     ← 가맹점, JPA + MySQL(merchant_db), Payment 엔티티
-  │ FeignClient: PgServiceClient → POST /api/pg/approve
+merchant-service (:7070)
+  │  POST /api/pg/approve
   ▼
-pg-service (:8081)           ← ★ 고도화 대상, 현재 stateless 프록시
-  │ FeignClient: CardAuthorizationServiceClient → POST /api/authorization/request
-  ▼
-card-authorization-service (:9090) ← 카드사, JPA + MySQL(card_authorization_db)
-  │ FeignClient + RestClient: BankServiceClient
-  ▼
-bank-service (:8080)         ← 은행, JPA + MySQL(bank_db), 비관적 락
+pg-service (:8081)  ← ★ BIN-based routing
+  │
+  ├─ BIN 4xxx (Visa) ──────────────► card-authorization-service   (:9090)  [Acquirer A]
+  │                                        │
+  │                                        ▼
+  │                                   bank-service (:8080)
+  │
+  └─ BIN 5xxx/3xxx/6xxx/35xx ──────► card-authorization-service-2 (:9091)  [Acquirer B]
+                                           │
+                                           ▼
+                                      bank-service (:8080)  ← 동일 bank-service 공유
 ```
 
-## Service Registry
+## Service Registry (Eureka :8761)
 
-모든 서비스는 **Eureka Server (:8761)**에 등록되며, FeignClient는 서비스 이름(`@FeignClient(name = "...")`)으로 Eureka를 통해 인스턴스를 조회한다.
+| Service Name (Eureka)            | Port     | Role                                              | DB                          |
+| -------------------------------- | -------- | ------------------------------------------------- | --------------------------- |
+| eureka-server                    | 8761     | 서비스 디스커버리                                 | -                           |
+| api-gateway                      | 8000     | Gateway WebMVC                                    | -                           |
+| merchant-service                 | 7070     | 가맹점 (스텁)                                     | merchant_db                 |
+| **pg-service**                   | **8081** | **PG 게이트웨이 (고도화 대상)**                   | **pg_db**                   |
+| card-authorization-service       | 9090     | Acquirer A — Visa (스텁)                          | card_authorization_db       |
+| **card-authorization-service-2** | **9091** | **Acquirer B — MC/Amex/Discover/JCB (신규 스텁)** | **card_authorization_db_2** |
+| bank-service                     | 8080     | 은행 (스텁)                                       | bank_db                     |
 
-## Tech Stack Summary
+## BIN Routing Rule
 
-| Service                    | Spring Boot | Spring Cloud | DB                            | 비고              |
-| -------------------------- | ----------- | ------------ | ----------------------------- | ----------------- |
-| eureka-server              | 4.0.3       | 2025.1.0     | -                             | 서비스 디스커버리 |
-| api-gateway                | 4.0.3       | 2025.1.0     | -                             | Gateway WebMVC    |
-| pg-service                 | 4.0.3       | 2025.1.0     | **없음** (고도화 시 추가)     | ★ 고도화 대상     |
-| merchant-service           | 4.0.3       | 2025.1.0     | MySQL (merchant_db)           | 테스트 스텁       |
-| card-authorization-service | 3.2.0       | 2023.0.4     | MySQL (card_authorization_db) | 테스트 스텁       |
-| bank-service               | 3.2.0       | 2023.0.4     | MySQL (bank_db)               | 테스트 스텁       |
+카드 번호 앞자리(BIN prefix)로 카드 브랜드를 식별하고, 브랜드별로 acquirer를 선택한다.
 
-> **주의**: pg-service(4.0.3)와 스텁 서비스(3.2.0) 간 Spring Boot 버전이 다르다. 런타임 호환성 문제는 없지만 공통 라이브러리 확장 시 유의.
+| BIN Prefix         | Card Brand | Acquirer | Eureka Service Name          |
+| ------------------ | ---------- | -------- | ---------------------------- |
+| `4`                | Visa       | **A**    | card-authorization-service   |
+| `5`                | Mastercard | **B**    | card-authorization-service-2 |
+| `3` (but not `35`) | Amex       | **B**    | card-authorization-service-2 |
+| `35`               | JCB        | **B**    | card-authorization-service-2 |
+| `6`                | Discover   | **B**    | card-authorization-service-2 |
 
-## Shared Module
+> 매칭 순서: longest prefix first (`35` → `3` → `4` → `5` → `6`)
 
-`common/` — bank-service, card-authorization-service가 공유하는 enum 모듈 (AccountType, AccountStatus, MappingStatus). 순수 Java, Spring 의존성 없음. pg-service는 현재 사용하지 않음.
+## Test Card Distribution
 
-## Docker Environment
+### Acquirer A (card-authorization-service) — Visa Only
 
-```bash
-docker-compose up --build    # 전체 스택 기동
-```
+| Card Number      | Brand | Type  | Status                   | Customer |
+| ---------------- | ----- | ----- | ------------------------ | -------- |
+| 4111111111111111 | Visa  | DEBIT | ACTIVE                   | CUST-001 |
+| 4012888888881881 | Visa  | DEBIT | ACTIVE (expired 2024-12) | CUST-007 |
 
-- 단일 `docker-compose.yml`, `msa-net` 브릿지 네트워크
-- MySQL 8.0 단일 인스턴스, `docker/mysql/init/01-init-databases.sql`에서 3개 DB 초기 생성
-- MySQL healthcheck로 DB 의존 서비스 시작 순서 보장
-- 외부 노출 포트: 8000 (api-gateway), 8761 (eureka)
+### Acquirer B (card-authorization-service-2) — MC, Amex, Discover, JCB
 
-## API Specifications (Stub Services)
+| Card Number      | Brand      | Type   | Status    | Customer |
+| ---------------- | ---------- | ------ | --------- | -------- |
+| 5555555555554444 | Mastercard | DEBIT  | ACTIVE    | CUST-002 |
+| 378282246310005  | Amex       | DEBIT  | ACTIVE    | CUST-003 |
+| 6011111111111117 | Discover   | CREDIT | ACTIVE    | CUST-004 |
+| 3530111333300000 | JCB        | CREDIT | ACTIVE    | CUST-005 |
+| 5105105105105100 | Mastercard | DEBIT  | SUSPENDED | CUST-006 |
 
-### merchant-service → pg-service
+### bank-service — 변경 없음
 
-```
-POST /api/pg/approve
-Content-Type: application/json
+bank-service는 두 acquirer가 공유한다. card_account_mappings에 7장 전체가 매핑되어 있으므로, 어느 acquirer가 호출하든 잔액 조회/출금이 가능하다.
 
-Request (PgAuthRequest / MerchantApprovalRequest):
-{
-  "merchantTransactionId": "M...",      // 가맹점 결제 고유 번호
-  "merchantId": "MERCHANT-001",
-  "cardNumber": "4111111111111111",
-  "expiryDate": "2712",
-  "amount": 10000,                      // ⚠️ merchant: Integer, pg: BigDecimal
-  "currency": "KRW",
-  "mti": "0100",                        // ISO 8583 Message Type Indicator
-  "processingCode": "000000",
-  "transmissionDateTime": "20260319153000",
-  "stan": "123456"                      // System Trace Audit Number
-}
+## API Specifications
 
-Response (PgAuthResponse / MerchantApprovalResponse):
-{
-  "merchantTransactionId": "M...",
-  "pgTransactionId": "PG20260319153000ABCDEF",
-  "approved": true,
-  "responseCode": "00",
-  "message": "Approved",
-  "approvalNumber": "12345678",
-  "approvedAt": "2026-03-19T15:30:05"
-}
-```
+### pg-service → card-authorization-service / card-authorization-service-2 (동일 API)
 
-### pg-service → card-authorization-service
+두 acquirer는 **동일한 API 스펙**을 공유한다. pg-service가 BIN에 따라 어느 서비스로 보낼지만 결정한다.
 
 ```
 POST /api/authorization/request
-Content-Type: application/json
-
-Request (CardAuthorizationRequest):
-{
-  "transactionId": "PG20260319153000ABCDEF",
-  "cardNumber": "4111111111111111",
-  "amount": 10000,                      // BigDecimal
-  "merchantId": "MERCHANT-001",
-  "terminalId": null,
-  "pin": null
-}
-
-Response (CardAuthorizationResponse → AuthorizationResponse):
-{
-  "transactionId": "PG20260319153000ABCDEF",
-  "approvalNumber": "12345678",
-  "responseCode": "00",
-  "message": "승인",
-  "amount": 10000,
-  "authorizationDate": "2026-03-19T15:30:05",
-  "approved": true
-}
+Request:  { transactionId, cardNumber, amount(BigDecimal), merchantId, terminalId, pin }
+Response: { transactionId, approvalNumber, responseCode, message, amount, authorizationDate, approved }
 ```
 
-## Response Code System
+## Completed Phases
 
-| Code | Meaning             | Source                                    |
-| ---- | ------------------- | ----------------------------------------- |
-| `00` | 승인                | card-authorization-service                |
-| `14` | 카드 정지/분실/해지 | card-authorization-service                |
-| `51` | 잔액 부족           | bank-service → card-authorization-service |
-| `54` | 유효기간 만료       | card-authorization-service                |
-| `55` | PIN 오류            | card-authorization-service                |
-| `61` | 한도 초과           | card-authorization-service                |
-| `96` | 시스템 오류         | 전 서비스 공통                            |
+1. 거래 원장 + 멱등성 기반
+2. 승인 흐름 책임 분리 (Facade 패턴)
+3. 외부 카드사 연동 안정화 (timeout / retry / circuit breaker)
+4. PG 내부 예외 표준화 + 전역 처리
+5. 라우팅 추상화 (RoutingPolicy / AcquirerRoutingService)
+6. **BIN 기반 다중 Acquirer 라우팅** ← 현재 진행
 
 ## Coding Conventions
 
-- 패키지 구조: `dev.pg.*` (pg-service), `com.card.payment.*` (card/bank)
+- 패키지: `dev.pg.*` (pg-service), `com.card.payment.*` (card/bank)
 - DTO: Lombok `@Data @Builder @NoArgsConstructor @AllArgsConstructor`
 - Feign: `@FeignClient(name = "서비스명")` + Eureka 서비스 디스커버리
-- Wrapper Client 패턴: FeignClient 인터페이스를 직접 노출하지 않고, 에러 핸들링을 감싸는 `*Client` 컴포넌트를 두는 것이 현재 패턴 (예: `CardAuthorizationClient` wraps `CardAuthorizationServiceClient`)
-- 거래 ID 포맷: `PG` + yyyyMMddHHmmss + UUID 6자리 (대문자)
+- Wrapper Client 패턴: FeignClient 인터페이스를 직접 노출하지 않고, 에러 핸들링 래퍼 사용
+- 거래 ID: `PG` + yyyyMMddHHmmss + UUID 6자리 (대문자)
 
 ## Known Issues
 
-1. **금액 타입 불일치**: merchant-service의 `PgAuthRequest.amount`는 `Integer`, pg-service의 `MerchantApprovalRequest.amount`는 `BigDecimal`
-2. **FakePgController**: merchant-service에 pg-service 목업 컨트롤러가 존재 (독립 테스트용)
-3. **pg-service에 DB 없음**: 거래 이력 추적 불가
-4. **pg-service에 보안 없음**: Spring Security 미적용, 인증/인가 없음
-5. **에러 처리 미흡**: try-catch → fallback 응답 수준, 서킷 브레이커/재시도 없음
+1. 금액 타입 불일치: merchant-service(Integer) vs pg-service(BigDecimal)
+2. FakePgController: merchant-service에 pg-service 목업 존재 (독립 테스트용)
