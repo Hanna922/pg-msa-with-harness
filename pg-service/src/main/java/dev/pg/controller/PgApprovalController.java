@@ -5,6 +5,7 @@ import dev.pg.dto.MerchantApprovalRequest;
 import dev.pg.dto.MerchantApprovalResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +18,7 @@ import java.time.LocalDateTime;
 public class PgApprovalController {
 
     private final PgApprovalFacade pgApprovalFacade;
+    private static final String GENERIC_ERROR_MESSAGE = "PG approval processing failed";
 
     public PgApprovalController(PgApprovalFacade pgApprovalFacade) {
         this.pgApprovalFacade = pgApprovalFacade;
@@ -24,26 +26,27 @@ public class PgApprovalController {
 
     @PostMapping("/approve")
     public ResponseEntity<MerchantApprovalResponse> approve(@RequestBody MerchantApprovalRequest request) {
-        try {
-            return ResponseEntity.ok(pgApprovalFacade.approve(request));
-        } catch (IllegalArgumentException e) {
-            MerchantApprovalResponse response = MerchantApprovalResponse.builder()
-                    .merchantTransactionId(request != null ? request.getMerchantTransactionId() : null)
-                    .approved(false)
-                    .responseCode("96")
-                    .message(e.getMessage())
-                    .approvedAt(LocalDateTime.now())
-                    .build();
-            return ResponseEntity.badRequest().body(response);
-        } catch (Exception e) {
-            MerchantApprovalResponse response = MerchantApprovalResponse.builder()
-                    .merchantTransactionId(request != null ? request.getMerchantTransactionId() : null)
-                    .approved(false)
-                    .responseCode("96")
-                    .message("PG approval processing failed")
-                    .approvedAt(LocalDateTime.now())
-                    .build();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
-        }
+        return ResponseEntity.ok(pgApprovalFacade.approve(request));
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<MerchantApprovalResponse> handleBadRequest(IllegalArgumentException e) {
+        return ResponseEntity.badRequest().body(buildErrorResponse(null, e.getMessage()));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<MerchantApprovalResponse> handleUnexpectedException(Exception e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(buildErrorResponse(null, GENERIC_ERROR_MESSAGE));
+    }
+
+    private MerchantApprovalResponse buildErrorResponse(String merchantTransactionId, String message) {
+        return MerchantApprovalResponse.builder()
+                .merchantTransactionId(merchantTransactionId)
+                .approved(false)
+                .responseCode("96")
+                .message(message)
+                .approvedAt(LocalDateTime.now())
+                .build();
     }
 }
