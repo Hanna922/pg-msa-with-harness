@@ -3,6 +3,8 @@ package dev.pg.approval.service;
 import dev.pg.approval.mapper.ApprovalMapper;
 import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
 import dev.pg.client.CardAuthorizationClient;
+import dev.pg.client.support.CardAuthorizationClientException;
+import dev.pg.client.support.CardAuthorizationErrorType;
 import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
 import dev.pg.dto.MerchantApprovalRequest;
@@ -22,7 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -191,5 +195,148 @@ class PgApprovalFacadeTest {
                 .when(approvalValidationService).validate(invalidRequest);
 
         assertThrows(IllegalArgumentException.class, () -> facade.approve(invalidRequest));
+    }
+
+    @Test
+    void shouldMarkTimeoutForCommunicationFailure() {
+        MerchantApprovalRequest request = createRequest();
+        PaymentTransaction pendingTransaction = createPendingTransaction();
+        PaymentTransaction timeoutTransaction = PaymentTransaction.builder()
+                .pgTransactionId("PG202603190001ABCDEF")
+                .merchantTransactionId("M202603190001")
+                .merchantId("MERCHANT-001")
+                .maskedCardNumber("411111******1111")
+                .amount(new BigDecimal("10000"))
+                .currency("KRW")
+                .approvalStatus(ApprovalStatus.TIMEOUT)
+                .settlementStatus(SettlementStatus.NOT_READY)
+                .responseCode("96")
+                .message("Card authorization service communication failed")
+                .requestedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 0))
+                .respondedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 5))
+                .build();
+        CardAuthorizationRequest cardAuthorizationRequest = createCardAuthorizationRequest();
+        MerchantApprovalResponse mappedResponse = MerchantApprovalResponse.builder()
+                .merchantTransactionId("M202603190001")
+                .pgTransactionId("PG202603190001ABCDEF")
+                .approved(false)
+                .responseCode("96")
+                .message("Card authorization service communication failed")
+                .build();
+
+        when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
+        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
+        when(transactionLedgerService.createPendingTransaction(request, "PG202603190001ABCDEF"))
+                .thenReturn(pendingTransaction);
+        when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
+                .thenReturn(cardAuthorizationRequest);
+        when(client.authorize(cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
+                CardAuthorizationErrorType.COMMUNICATION_FAILURE,
+                "Card authorization service communication failed"
+        ));
+        when(transactionLedgerService.markTimeout(pendingTransaction, "Card authorization service communication failed"))
+                .thenReturn(timeoutTransaction);
+        when(approvalMapper.toMerchantApprovalResponse(timeoutTransaction)).thenReturn(mappedResponse);
+
+        MerchantApprovalResponse response = facade.approve(request);
+
+        assertEquals("96", response.getResponseCode());
+        assertEquals("Card authorization service communication failed", response.getMessage());
+        verify(transactionLedgerService).markTimeout(pendingTransaction, "Card authorization service communication failed");
+    }
+
+    @Test
+    void shouldMarkFailedForDownstreamFailure() {
+        MerchantApprovalRequest request = createRequest();
+        PaymentTransaction pendingTransaction = createPendingTransaction();
+        PaymentTransaction failedTransaction = PaymentTransaction.builder()
+                .pgTransactionId("PG202603190001ABCDEF")
+                .merchantTransactionId("M202603190001")
+                .merchantId("MERCHANT-001")
+                .maskedCardNumber("411111******1111")
+                .amount(new BigDecimal("10000"))
+                .currency("KRW")
+                .approvalStatus(ApprovalStatus.FAILED)
+                .settlementStatus(SettlementStatus.NOT_READY)
+                .responseCode("96")
+                .message("Card authorization service returned HTTP 503")
+                .requestedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 0))
+                .respondedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 5))
+                .build();
+        CardAuthorizationRequest cardAuthorizationRequest = createCardAuthorizationRequest();
+        MerchantApprovalResponse mappedResponse = MerchantApprovalResponse.builder()
+                .merchantTransactionId("M202603190001")
+                .pgTransactionId("PG202603190001ABCDEF")
+                .approved(false)
+                .responseCode("96")
+                .message("Card authorization service returned HTTP 503")
+                .build();
+
+        when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
+        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
+        when(transactionLedgerService.createPendingTransaction(request, "PG202603190001ABCDEF"))
+                .thenReturn(pendingTransaction);
+        when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
+                .thenReturn(cardAuthorizationRequest);
+        when(client.authorize(cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
+                CardAuthorizationErrorType.DOWNSTREAM_FAILURE,
+                "Card authorization service returned HTTP 503"
+        ));
+        when(transactionLedgerService.markFailed(
+                eq(pendingTransaction),
+                eq("96"),
+                eq("Card authorization service returned HTTP 503")
+        )).thenReturn(failedTransaction);
+        when(approvalMapper.toMerchantApprovalResponse(failedTransaction)).thenReturn(mappedResponse);
+
+        MerchantApprovalResponse response = facade.approve(request);
+
+        assertEquals("96", response.getResponseCode());
+        assertEquals("Card authorization service returned HTTP 503", response.getMessage());
+        verify(transactionLedgerService).markFailed(
+                pendingTransaction,
+                "96",
+                "Card authorization service returned HTTP 503"
+        );
+    }
+
+    private MerchantApprovalRequest createRequest() {
+        return MerchantApprovalRequest.builder()
+                .merchantTransactionId("M202603190001")
+                .merchantId("MERCHANT-001")
+                .cardNumber("4111111111111111")
+                .expiryDate("2712")
+                .amount(new BigDecimal("10000"))
+                .currency("KRW")
+                .mti("0100")
+                .processingCode("000000")
+                .transmissionDateTime("20260319153000")
+                .stan("123456")
+                .build();
+    }
+
+    private PaymentTransaction createPendingTransaction() {
+        return PaymentTransaction.builder()
+                .pgTransactionId("PG202603190001ABCDEF")
+                .merchantTransactionId("M202603190001")
+                .merchantId("MERCHANT-001")
+                .maskedCardNumber("411111******1111")
+                .amount(new BigDecimal("10000"))
+                .currency("KRW")
+                .approvalStatus(ApprovalStatus.PENDING)
+                .settlementStatus(SettlementStatus.NOT_READY)
+                .requestedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 0))
+                .build();
+    }
+
+    private CardAuthorizationRequest createCardAuthorizationRequest() {
+        return CardAuthorizationRequest.builder()
+                .transactionId("PG202603190001ABCDEF")
+                .cardNumber("4111111111111111")
+                .amount(new BigDecimal("10000"))
+                .merchantId("MERCHANT-001")
+                .terminalId(null)
+                .pin(null)
+                .build();
     }
 }

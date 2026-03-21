@@ -4,6 +4,7 @@ import dev.pg.approval.mapper.ApprovalMapper;
 import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
 import dev.pg.client.CardAuthorizationClient;
 import dev.pg.client.support.CardAuthorizationClientException;
+import dev.pg.client.support.CardAuthorizationErrorType;
 import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
 import dev.pg.dto.MerchantApprovalRequest;
@@ -64,9 +65,19 @@ public class PgApprovalFacade {
                     : transactionLedgerService.markFailed(transaction, cardResponse);
             return approvalMapper.toMerchantApprovalResponse(updatedTransaction);
         } catch (CardAuthorizationClientException e) {
-            PaymentTransaction timedOutTransaction =
-                    transactionLedgerService.markTimeout(transaction, e.getMessage());
-            return approvalMapper.toMerchantApprovalResponse(timedOutTransaction);
+            PaymentTransaction failedTransaction = handleClientFailure(transaction, e);
+            return approvalMapper.toMerchantApprovalResponse(failedTransaction);
         }
+    }
+
+    private PaymentTransaction handleClientFailure(
+            PaymentTransaction transaction,
+            CardAuthorizationClientException exception
+    ) {
+        if (exception.getErrorType() == CardAuthorizationErrorType.COMMUNICATION_FAILURE) {
+            return transactionLedgerService.markTimeout(transaction, exception.getMessage());
+        }
+
+        return transactionLedgerService.markFailed(transaction, "96", exception.getMessage());
     }
 }

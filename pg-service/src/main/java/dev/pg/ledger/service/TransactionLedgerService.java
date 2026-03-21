@@ -58,6 +58,11 @@ public class TransactionLedgerService {
         return paymentTransactionRepository.save(transaction);
     }
 
+    public PaymentTransaction markFailed(PaymentTransaction transaction, String responseCode, String message) {
+        transaction.markFailed(responseCode, message, LocalDateTime.now());
+        return paymentTransactionRepository.save(transaction);
+    }
+
     public PaymentTransaction markTimeout(PaymentTransaction transaction, String message) {
         transaction.markTimeout("96", message, LocalDateTime.now());
         return paymentTransactionRepository.save(transaction);
