@@ -1,6 +1,6 @@
 package dev.pg.routing.service;
 
-import dev.pg.client.CardAuthorizationClient;
+import dev.pg.client.AcquirerClient;
 import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
 import dev.pg.dto.MerchantApprovalRequest;
@@ -11,18 +11,25 @@ import dev.pg.support.exception.BusinessException;
 import dev.pg.support.exception.ErrorCode;
 import org.springframework.stereotype.Service;
 
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+
 @Service
 public class AcquirerRoutingService {
 
     private final RoutingPolicy routingPolicy;
-    private final CardAuthorizationClient cardAuthorizationClient;
+    private final Map<AcquirerType, AcquirerClient> acquirerClients;
 
     public AcquirerRoutingService(
             RoutingPolicy routingPolicy,
-            CardAuthorizationClient cardAuthorizationClient
+            List<AcquirerClient> acquirerClients
     ) {
         this.routingPolicy = routingPolicy;
-        this.cardAuthorizationClient = cardAuthorizationClient;
+        this.acquirerClients = new EnumMap<>(AcquirerType.class);
+        for (AcquirerClient acquirerClient : acquirerClients) {
+            this.acquirerClients.put(acquirerClient.getAcquirerType(), acquirerClient);
+        }
     }
 
     public CardAuthorizationResponse authorize(
@@ -30,9 +37,10 @@ public class AcquirerRoutingService {
             CardAuthorizationRequest authorizationRequest
     ) {
         RoutingTarget routingTarget = routingPolicy.route(merchantRequest);
+        AcquirerClient acquirerClient = acquirerClients.get(routingTarget.acquirerType());
 
-        if (routingTarget.acquirerType() == AcquirerType.CARD_AUTHORIZATION_SERVICE) {
-            return cardAuthorizationClient.authorize(authorizationRequest);
+        if (acquirerClient != null) {
+            return acquirerClient.authorize(authorizationRequest);
         }
 
         throw new BusinessException(

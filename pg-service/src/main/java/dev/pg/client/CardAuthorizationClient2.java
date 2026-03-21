@@ -5,6 +5,7 @@ import dev.pg.client.support.CardAuthorizationErrorType;
 import dev.pg.client.support.ExternalErrorTranslator;
 import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
+import dev.pg.routing.model.AcquirerType;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.circuitbreaker.CircuitBreaker;
@@ -12,7 +13,7 @@ import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
-public class CardAuthorizationClient2 {
+public class CardAuthorizationClient2 implements AcquirerClient {
 
     private final CardAuthorizationServiceClient2 serviceClient;
     private final ExternalErrorTranslator externalErrorTranslator;
@@ -31,6 +32,12 @@ public class CardAuthorizationClient2 {
         this.maxAttempts = maxAttempts;
     }
 
+    @Override
+    public AcquirerType getAcquirerType() {
+        return AcquirerType.CARD_AUTHORIZATION_SERVICE_2;
+    }
+
+    @Override
     public CardAuthorizationResponse authorize(CardAuthorizationRequest request) {
         return circuitBreaker.run(
                 () -> authorizeWithRetry(request),

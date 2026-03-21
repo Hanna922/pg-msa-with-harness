@@ -1,9 +1,10 @@
 package dev.pg.routing.service;
 
-import dev.pg.client.CardAuthorizationClient;
+import dev.pg.client.AcquirerClient;
 import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
 import dev.pg.dto.MerchantApprovalRequest;
+import dev.pg.routing.model.AcquirerType;
 import dev.pg.routing.model.RoutingTarget;
 import dev.pg.routing.policy.RoutingPolicy;
 import dev.pg.support.exception.BusinessException;
@@ -11,6 +12,7 @@ import dev.pg.support.exception.ErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -22,9 +24,15 @@ import static org.mockito.Mockito.when;
 class AcquirerRoutingServiceTest {
 
     private final RoutingPolicy routingPolicy = mock(RoutingPolicy.class);
-    private final CardAuthorizationClient cardAuthorizationClient = mock(CardAuthorizationClient.class);
-    private final AcquirerRoutingService acquirerRoutingService =
-            new AcquirerRoutingService(routingPolicy, cardAuthorizationClient);
+    private final AcquirerClient acquirerClientA = mock(AcquirerClient.class);
+    private final AcquirerClient acquirerClientB = mock(AcquirerClient.class);
+    private final AcquirerRoutingService acquirerRoutingService;
+
+    AcquirerRoutingServiceTest() {
+        when(acquirerClientA.getAcquirerType()).thenReturn(AcquirerType.CARD_AUTHORIZATION_SERVICE);
+        when(acquirerClientB.getAcquirerType()).thenReturn(AcquirerType.CARD_AUTHORIZATION_SERVICE_2);
+        acquirerRoutingService = new AcquirerRoutingService(routingPolicy, List.of(acquirerClientA, acquirerClientB));
+    }
 
     @Test
     void shouldAuthorizeThroughCardAuthorizationClient() {
@@ -38,13 +46,37 @@ class AcquirerRoutingServiceTest {
                 .build();
 
         when(routingPolicy.route(merchantRequest)).thenReturn(RoutingTarget.cardAuthorizationService());
-        when(cardAuthorizationClient.authorize(authorizationRequest)).thenReturn(response);
+        when(acquirerClientA.authorize(authorizationRequest)).thenReturn(response);
 
         CardAuthorizationResponse actual = acquirerRoutingService.authorize(merchantRequest, authorizationRequest);
 
         assertEquals("00", actual.getResponseCode());
         verify(routingPolicy).route(merchantRequest);
-        verify(cardAuthorizationClient).authorize(authorizationRequest);
+        verify(acquirerClientA).authorize(authorizationRequest);
+        verify(acquirerClientB, never()).authorize(authorizationRequest);
+    }
+
+    @Test
+    void shouldAuthorizeThroughSecondAcquirerClient() {
+        MerchantApprovalRequest merchantRequest = createMerchantRequest();
+        CardAuthorizationRequest authorizationRequest = createAuthorizationRequest();
+        CardAuthorizationResponse response = CardAuthorizationResponse.builder()
+                .transactionId("PG202603210001ABCDEF")
+                .responseCode("00")
+                .message("Approved by second acquirer")
+                .approved(true)
+                .build();
+
+        when(routingPolicy.route(merchantRequest)).thenReturn(RoutingTarget.cardAuthorizationService2());
+        when(acquirerClientB.authorize(authorizationRequest)).thenReturn(response);
+
+        CardAuthorizationResponse actual = acquirerRoutingService.authorize(merchantRequest, authorizationRequest);
+
+        assertEquals("00", actual.getResponseCode());
+        assertEquals("Approved by second acquirer", actual.getMessage());
+        verify(routingPolicy).route(merchantRequest);
+        verify(acquirerClientB).authorize(authorizationRequest);
+        verify(acquirerClientA, never()).authorize(authorizationRequest);
     }
 
     @Test
@@ -62,7 +94,8 @@ class AcquirerRoutingServiceTest {
         assertEquals(ErrorCode.INTERNAL_ERROR, exception.getErrorCode());
         assertEquals("Unsupported routing target: null", exception.getMessage());
         verify(routingPolicy).route(merchantRequest);
-        verify(cardAuthorizationClient, never()).authorize(authorizationRequest);
+        verify(acquirerClientA, never()).authorize(authorizationRequest);
+        verify(acquirerClientB, never()).authorize(authorizationRequest);
     }
 
     private MerchantApprovalRequest createMerchantRequest() {
