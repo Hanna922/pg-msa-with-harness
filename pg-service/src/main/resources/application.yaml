@@ -34,3 +34,5 @@ pg:
     card-authorization:
       connect-timeout-ms: ${PG_CARD_AUTH_CONNECT_TIMEOUT_MS:1000}
       read-timeout-ms: ${PG_CARD_AUTH_READ_TIMEOUT_MS:3000}
+      retry:
+        max-attempts: ${PG_CARD_AUTH_RETRY_MAX_ATTEMPTS:2}

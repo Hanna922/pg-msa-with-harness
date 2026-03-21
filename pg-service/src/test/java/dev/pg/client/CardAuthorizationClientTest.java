@@ -17,6 +17,8 @@ import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CardAuthorizationClientTest {
@@ -24,7 +26,7 @@ class CardAuthorizationClientTest {
     private final CardAuthorizationServiceClient serviceClient = mock(CardAuthorizationServiceClient.class);
     private final ExternalErrorTranslator externalErrorTranslator = new ExternalErrorTranslator();
     private final CardAuthorizationClient client =
-            new CardAuthorizationClient(serviceClient, externalErrorTranslator);
+            new CardAuthorizationClient(serviceClient, externalErrorTranslator, 2);
 
     @Test
     void shouldThrowTranslatedExceptionForEmptyResponse() {
@@ -106,5 +108,65 @@ class CardAuthorizationClientTest {
 
         assertEquals("00", actual.getResponseCode());
         assertEquals("12345678", actual.getApprovalNumber());
+    }
+
+    @Test
+    void shouldRetryCommunicationFailureAndSucceedOnSecondAttempt() {
+        CardAuthorizationRequest request = CardAuthorizationRequest.builder()
+                .transactionId("PG20260321200000ABCDEF")
+                .cardNumber("4111111111111111")
+                .amount(new BigDecimal("10000"))
+                .merchantId("MERCHANT-001")
+                .build();
+        CardAuthorizationResponse response = CardAuthorizationResponse.builder()
+                .transactionId("PG20260321200000ABCDEF")
+                .approvalNumber("12345678")
+                .responseCode("00")
+                .message("Approved")
+                .amount(new BigDecimal("10000"))
+                .approved(true)
+                .build();
+
+        when(serviceClient.authorize(request))
+                .thenThrow(new RuntimeException("socket closed"))
+                .thenReturn(response);
+
+        CardAuthorizationResponse actual = client.authorize(request);
+
+        assertEquals("00", actual.getResponseCode());
+        verify(serviceClient, times(2)).authorize(request);
+    }
+
+    @Test
+    void shouldNotRetryDownstreamFailure() {
+        CardAuthorizationRequest request = CardAuthorizationRequest.builder()
+                .transactionId("PG20260321200000ABCDEF")
+                .cardNumber("4111111111111111")
+                .amount(new BigDecimal("10000"))
+                .merchantId("MERCHANT-001")
+                .build();
+        Request feignRequest = Request.create(
+                Request.HttpMethod.POST,
+                "/api/authorization/request",
+                Collections.emptyMap(),
+                null,
+                new RequestTemplate()
+        );
+        FeignException feignException = FeignException.errorStatus(
+                "authorize",
+                feign.Response.builder()
+                        .status(503)
+                        .reason("Service Unavailable")
+                        .request(feignRequest)
+                        .headers(Collections.emptyMap())
+                        .body("unavailable", StandardCharsets.UTF_8)
+                        .build()
+        );
+
+        when(serviceClient.authorize(request)).thenThrow(feignException);
+
+        assertThrows(CardAuthorizationClientException.class, () -> client.authorize(request));
+
+        verify(serviceClient, times(1)).authorize(request);
     }
 }
