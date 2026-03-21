@@ -160,6 +160,28 @@ class CardAuthorizationClientTest {
     }
 
     @Test
+    void shouldThrowCommunicationFailureAfterRetryExhausted() {
+        CardAuthorizationRequest request = CardAuthorizationRequest.builder()
+                .transactionId("PG20260321200000ABCDEF")
+                .cardNumber("4111111111111111")
+                .amount(new BigDecimal("10000"))
+                .merchantId("MERCHANT-001")
+                .build();
+
+        when(serviceClient.authorize(request))
+                .thenThrow(new RuntimeException("socket closed"))
+                .thenThrow(new RuntimeException("socket closed"));
+
+        CardAuthorizationClientException exception = assertThrows(
+                CardAuthorizationClientException.class,
+                () -> client.authorize(request)
+        );
+
+        assertEquals(CardAuthorizationErrorType.COMMUNICATION_FAILURE, exception.getErrorType());
+        verify(serviceClient, times(2)).authorize(request);
+    }
+
+    @Test
     void shouldNotRetryDownstreamFailure() {
         CardAuthorizationRequest request = CardAuthorizationRequest.builder()
                 .transactionId("PG20260321200000ABCDEF")
@@ -215,5 +237,25 @@ class CardAuthorizationClientTest {
 
         assertEquals(CardAuthorizationErrorType.CIRCUIT_OPEN, exception.getErrorType());
         verify(serviceClient, times(0)).authorize(request);
+    }
+
+    @Test
+    void shouldNotRetryEmptyResponse() {
+        CardAuthorizationRequest request = CardAuthorizationRequest.builder()
+                .transactionId("PG20260321200000ABCDEF")
+                .cardNumber("4111111111111111")
+                .amount(new BigDecimal("10000"))
+                .merchantId("MERCHANT-001")
+                .build();
+
+        when(serviceClient.authorize(request)).thenReturn(null);
+
+        CardAuthorizationClientException exception = assertThrows(
+                CardAuthorizationClientException.class,
+                () -> client.authorize(request)
+        );
+
+        assertEquals(CardAuthorizationErrorType.EMPTY_RESPONSE, exception.getErrorType());
+        verify(serviceClient, times(1)).authorize(request);
     }
 }

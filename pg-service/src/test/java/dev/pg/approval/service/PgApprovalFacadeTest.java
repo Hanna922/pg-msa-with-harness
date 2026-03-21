@@ -300,6 +300,61 @@ class PgApprovalFacadeTest {
         );
     }
 
+    @Test
+    void shouldMarkFailedForCircuitOpen() {
+        MerchantApprovalRequest request = createRequest();
+        PaymentTransaction pendingTransaction = createPendingTransaction();
+        PaymentTransaction failedTransaction = PaymentTransaction.builder()
+                .pgTransactionId("PG202603190001ABCDEF")
+                .merchantTransactionId("M202603190001")
+                .merchantId("MERCHANT-001")
+                .maskedCardNumber("411111******1111")
+                .amount(new BigDecimal("10000"))
+                .currency("KRW")
+                .approvalStatus(ApprovalStatus.FAILED)
+                .settlementStatus(SettlementStatus.NOT_READY)
+                .responseCode("96")
+                .message("Card authorization circuit breaker is open")
+                .requestedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 0))
+                .respondedAt(LocalDateTime.of(2026, 3, 19, 15, 30, 5))
+                .build();
+        CardAuthorizationRequest cardAuthorizationRequest = createCardAuthorizationRequest();
+        MerchantApprovalResponse mappedResponse = MerchantApprovalResponse.builder()
+                .merchantTransactionId("M202603190001")
+                .pgTransactionId("PG202603190001ABCDEF")
+                .approved(false)
+                .responseCode("96")
+                .message("Card authorization circuit breaker is open")
+                .build();
+
+        when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
+        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
+        when(transactionLedgerService.createPendingTransaction(request, "PG202603190001ABCDEF"))
+                .thenReturn(pendingTransaction);
+        when(cardAuthorizationRequestFactory.create(request, "PG202603190001ABCDEF"))
+                .thenReturn(cardAuthorizationRequest);
+        when(client.authorize(cardAuthorizationRequest)).thenThrow(new CardAuthorizationClientException(
+                CardAuthorizationErrorType.CIRCUIT_OPEN,
+                "Card authorization circuit breaker is open"
+        ));
+        when(transactionLedgerService.markFailed(
+                eq(pendingTransaction),
+                eq("96"),
+                eq("Card authorization circuit breaker is open")
+        )).thenReturn(failedTransaction);
+        when(approvalMapper.toMerchantApprovalResponse(failedTransaction)).thenReturn(mappedResponse);
+
+        MerchantApprovalResponse response = facade.approve(request);
+
+        assertEquals("96", response.getResponseCode());
+        assertEquals("Card authorization circuit breaker is open", response.getMessage());
+        verify(transactionLedgerService).markFailed(
+                pendingTransaction,
+                "96",
+                "Card authorization circuit breaker is open"
+        );
+    }
+
     private MerchantApprovalRequest createRequest() {
         return MerchantApprovalRequest.builder()
                 .merchantTransactionId("M202603190001")
