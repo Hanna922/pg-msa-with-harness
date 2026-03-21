@@ -1,6 +1,21 @@
 spring:
   application:
     name: pg-service
+  datasource:
+    url: ${PG_DATASOURCE_URL:jdbc:h2:file:./pg-service-data/pgdb;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE}
+    username: ${PG_DATASOURCE_USERNAME:sa}
+    password: ${PG_DATASOURCE_PASSWORD:}
+    driver-class-name: ${PG_DATASOURCE_DRIVER:org.h2.Driver}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  h2:
+    console:
+      enabled: true
 
 server:
   port: 8081

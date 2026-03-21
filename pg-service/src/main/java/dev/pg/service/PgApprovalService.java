@@ -5,10 +5,15 @@ import dev.pg.dto.CardAuthorizationRequest;
 import dev.pg.dto.CardAuthorizationResponse;
 import dev.pg.dto.MerchantApprovalRequest;
 import dev.pg.dto.MerchantApprovalResponse;
+import dev.pg.ledger.entity.PaymentTransaction;
+import dev.pg.ledger.enums.ApprovalStatus;
+import dev.pg.ledger.service.IdempotencyService;
+import dev.pg.ledger.service.TransactionLedgerService;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -17,15 +22,30 @@ public class PgApprovalService {
     private static final DateTimeFormatter PG_TX_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
     private final CardAuthorizationClient cardAuthorizationClient;
+    private final IdempotencyService idempotencyService;
+    private final TransactionLedgerService transactionLedgerService;
 
-    public PgApprovalService(CardAuthorizationClient cardAuthorizationClient) {
+    public PgApprovalService(
+            CardAuthorizationClient cardAuthorizationClient,
+            IdempotencyService idempotencyService,
+            TransactionLedgerService transactionLedgerService
+    ) {
         this.cardAuthorizationClient = cardAuthorizationClient;
+        this.idempotencyService = idempotencyService;
+        this.transactionLedgerService = transactionLedgerService;
     }
 
     public MerchantApprovalResponse approve(MerchantApprovalRequest request) {
         validateRequest(request);
 
+        Optional<PaymentTransaction> existingTransaction =
+                idempotencyService.findExistingTransaction(request.getMerchantTransactionId());
+        if (existingTransaction.isPresent()) {
+            return mapFromTransaction(existingTransaction.get());
+        }
+
         String pgTransactionId = generatePgTransactionId();
+        PaymentTransaction transaction = transactionLedgerService.createPendingTransaction(request, pgTransactionId);
         CardAuthorizationRequest cardRequest = CardAuthorizationRequest.builder()
                 .transactionId(pgTransactionId)
                 .cardNumber(request.getCardNumber())
@@ -35,27 +55,28 @@ public class PgApprovalService {
                 .pin(null)
                 .build();
 
-        CardAuthorizationResponse cardResponse = cardAuthorizationClient.authorize(cardRequest);
-        return mapToMerchantResponse(request.getMerchantTransactionId(), pgTransactionId, cardResponse);
+        try {
+            CardAuthorizationResponse cardResponse = cardAuthorizationClient.authorize(cardRequest);
+            PaymentTransaction updatedTransaction = cardResponse.isApproved()
+                    ? transactionLedgerService.markApproved(transaction, cardResponse)
+                    : transactionLedgerService.markFailed(transaction, cardResponse);
+            return mapFromTransaction(updatedTransaction);
+        } catch (Exception e) {
+            PaymentTransaction timedOutTransaction =
+                    transactionLedgerService.markTimeout(transaction, "PG approval processing failed");
+            return mapFromTransaction(timedOutTransaction);
+        }
     }
 
-    MerchantApprovalResponse mapToMerchantResponse(
-            String merchantTransactionId,
-            String pgTransactionId,
-            CardAuthorizationResponse cardResponse
-    ) {
-        LocalDateTime approvedAt = cardResponse.getAuthorizationDate() != null
-                ? cardResponse.getAuthorizationDate()
-                : LocalDateTime.now();
-
+    MerchantApprovalResponse mapFromTransaction(PaymentTransaction transaction) {
         return MerchantApprovalResponse.builder()
-                .merchantTransactionId(merchantTransactionId)
-                .pgTransactionId(pgTransactionId)
-                .approved(cardResponse.isApproved())
-                .responseCode(cardResponse.getResponseCode())
-                .message(cardResponse.getMessage())
-                .approvalNumber(cardResponse.getApprovalNumber())
-                .approvedAt(approvedAt)
+                .merchantTransactionId(transaction.getMerchantTransactionId())
+                .pgTransactionId(transaction.getPgTransactionId())
+                .approved(transaction.getApprovalStatus() == ApprovalStatus.APPROVED)
+                .responseCode(transaction.getResponseCode())
+                .message(transaction.getMessage())
+                .approvalNumber(transaction.getApprovalNumber())
+                .approvedAt(transaction.getApprovedAt() != null ? transaction.getApprovedAt() : transaction.getRespondedAt())
                 .build();
     }
 
