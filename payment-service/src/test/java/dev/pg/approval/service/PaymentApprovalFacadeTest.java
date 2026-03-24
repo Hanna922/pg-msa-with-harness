@@ -2,6 +2,7 @@ package dev.pg.approval.service;
 
 import dev.pg.approval.mapper.ApprovalMapper;
 import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
+import dev.pg.client.LedgerClient;
 import dev.pg.client.support.CardAuthorizationClientException;
 import dev.pg.client.support.CardAuthorizationErrorType;
 import dev.pg.dto.CardAuthorizationRequest;
@@ -28,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -42,6 +44,7 @@ class PaymentApprovalFacadeTest {
     private final ApprovalValidationService approvalValidationService = mock(ApprovalValidationService.class);
     private final IdempotencyService idempotencyService = mock(IdempotencyService.class);
     private final TransactionLedgerService transactionLedgerService = mock(TransactionLedgerService.class);
+    private final LedgerClient ledgerClient = mock(LedgerClient.class);
     private final PaymentTransactionIdGenerator paymentTransactionIdGenerator = mock(PaymentTransactionIdGenerator.class);
     private final PaymentApprovalFacade facade =
             new PaymentApprovalFacade(
@@ -51,6 +54,7 @@ class PaymentApprovalFacadeTest {
                     approvalValidationService,
                     idempotencyService,
                     transactionLedgerService,
+                    ledgerClient,
                     paymentTransactionIdGenerator
             );
 
@@ -148,6 +152,13 @@ class PaymentApprovalFacadeTest {
         assertEquals("00", response.getResponseCode());
         assertEquals("12345678", response.getApprovalNumber());
         assertEquals(LocalDateTime.of(2026, 3, 19, 15, 30, 5), response.getApprovedAt());
+        verify(ledgerClient).syncTransaction(argThat(record ->
+                "PG202603190001ABCDEF".equals(record.getPgTransactionId())
+                        && ApprovalStatus.APPROVED == record.getApprovalStatus()
+                        && SettlementStatus.READY == record.getSettlementStatus()
+                        && "00".equals(record.getResponseCode())
+                        && "12345678".equals(record.getApprovalNumber())
+        ));
     }
 
     @Test
@@ -362,6 +373,13 @@ class PaymentApprovalFacadeTest {
         assertEquals("96", response.getResponseCode());
         assertEquals("Card authorization service communication failed", response.getMessage());
         verify(transactionLedgerService).markTimeout(pendingTransaction, "Card authorization service communication failed");
+        verify(ledgerClient).syncTransaction(argThat(record ->
+                "PG202603190001ABCDEF".equals(record.getPgTransactionId())
+                        && ApprovalStatus.TIMEOUT == record.getApprovalStatus()
+                        && SettlementStatus.NOT_READY == record.getSettlementStatus()
+                        && "96".equals(record.getResponseCode())
+                        && "Card authorization service communication failed".equals(record.getMessage())
+        ));
     }
 
     @Test
@@ -423,6 +441,13 @@ class PaymentApprovalFacadeTest {
                 "96",
                 "Card authorization service returned HTTP 503"
         );
+        verify(ledgerClient).syncTransaction(argThat(record ->
+                "PG202603190001ABCDEF".equals(record.getPgTransactionId())
+                        && ApprovalStatus.FAILED == record.getApprovalStatus()
+                        && SettlementStatus.NOT_READY == record.getSettlementStatus()
+                        && "96".equals(record.getResponseCode())
+                        && "Card authorization service returned HTTP 503".equals(record.getMessage())
+        ));
     }
 
     @Test
