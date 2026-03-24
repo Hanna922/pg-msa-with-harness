@@ -1,7 +1,7 @@
 package dev.pg.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.pg.approval.service.PgApprovalFacade;
+import dev.pg.approval.service.PaymentApprovalFacade;
 import dev.pg.dto.MerchantApprovalRequest;
 import dev.pg.dto.MerchantApprovalResponse;
 import dev.pg.support.exception.BusinessException;
@@ -24,9 +24,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(PgApprovalController.class)
+@WebMvcTest(PaymentApprovalController.class)
 @Import(GlobalExceptionHandler.class)
-class PgApprovalControllerTest {
+class PaymentApprovalControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -35,7 +35,7 @@ class PgApprovalControllerTest {
     private ObjectMapper objectMapper;
 
     @MockitoBean
-    private PgApprovalFacade pgApprovalFacade;
+    private PaymentApprovalFacade paymentApprovalFacade;
 
     @Test
     void shouldReturnOkWhenApprovalSucceeds() throws Exception {
@@ -48,7 +48,7 @@ class PgApprovalControllerTest {
                 .currency("KRW")
                 .build();
 
-        when(pgApprovalFacade.approve(any())).thenReturn(
+        when(paymentApprovalFacade.approve(any())).thenReturn(
                 MerchantApprovalResponse.builder()
                         .merchantTransactionId("M202603210010")
                         .pgTransactionId("PG20260321195500ABCDEF")
@@ -60,7 +60,7 @@ class PgApprovalControllerTest {
                         .build()
         );
 
-        mockMvc.perform(post("/api/pg/approve")
+        mockMvc.perform(post("/api/payments/approve")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -80,12 +80,12 @@ class PgApprovalControllerTest {
                 .currency("KRW")
                 .build();
 
-        when(pgApprovalFacade.approve(any())).thenThrow(new BusinessException(
+        when(paymentApprovalFacade.approve(any())).thenThrow(new BusinessException(
                 ErrorCode.INVALID_REQUEST,
                 "merchantTransactionId is required"
         ));
 
-        mockMvc.perform(post("/api/pg/approve")
+        mockMvc.perform(post("/api/payments/approve")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
@@ -105,9 +105,9 @@ class PgApprovalControllerTest {
                 .currency("KRW")
                 .build();
 
-        when(pgApprovalFacade.approve(any())).thenThrow(new RuntimeException("boom"));
+        when(paymentApprovalFacade.approve(any())).thenThrow(new RuntimeException("boom"));
 
-        mockMvc.perform(post("/api/pg/approve")
+        mockMvc.perform(post("/api/payments/approve")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isInternalServerError())
@@ -120,12 +120,12 @@ class PgApprovalControllerTest {
     void shouldReturnServiceUnavailableWhenCommunicationFailureOccurs() throws Exception {
         MerchantApprovalRequest request = createRequest("M202603210013");
 
-        when(pgApprovalFacade.approve(any())).thenThrow(new BusinessException(
+        when(paymentApprovalFacade.approve(any())).thenThrow(new BusinessException(
                 ErrorCode.CARD_AUTH_COMMUNICATION_FAILURE,
                 "Card authorization service communication failed"
         ));
 
-        mockMvc.perform(post("/api/pg/approve")
+        mockMvc.perform(post("/api/payments/approve")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isServiceUnavailable())
@@ -138,12 +138,12 @@ class PgApprovalControllerTest {
     void shouldReturnBadGatewayWhenDownstreamFailureOccurs() throws Exception {
         MerchantApprovalRequest request = createRequest("M202603210014");
 
-        when(pgApprovalFacade.approve(any())).thenThrow(new BusinessException(
+        when(paymentApprovalFacade.approve(any())).thenThrow(new BusinessException(
                 ErrorCode.CARD_AUTH_DOWNSTREAM_FAILURE,
                 "Card authorization service returned HTTP 503"
         ));
 
-        mockMvc.perform(post("/api/pg/approve")
+        mockMvc.perform(post("/api/payments/approve")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadGateway())
@@ -156,12 +156,12 @@ class PgApprovalControllerTest {
     void shouldReturnTooManyRequestsWhenCircuitBreakerIsOpen() throws Exception {
         MerchantApprovalRequest request = createRequest("M202603210015");
 
-        when(pgApprovalFacade.approve(any())).thenThrow(new BusinessException(
+        when(paymentApprovalFacade.approve(any())).thenThrow(new BusinessException(
                 ErrorCode.CARD_AUTH_CIRCUIT_OPEN,
                 "Card authorization circuit breaker is open"
         ));
 
-        mockMvc.perform(post("/api/pg/approve")
+        mockMvc.perform(post("/api/payments/approve")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isTooManyRequests())

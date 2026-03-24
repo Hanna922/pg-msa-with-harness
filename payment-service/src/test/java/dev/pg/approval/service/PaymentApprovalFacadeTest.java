@@ -34,7 +34,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-class PgApprovalFacadeTest {
+class PaymentApprovalFacadeTest {
 
     private final AcquirerRoutingService acquirerRoutingService = mock(AcquirerRoutingService.class);
     private final ApprovalMapper approvalMapper = mock(ApprovalMapper.class);
@@ -42,16 +42,16 @@ class PgApprovalFacadeTest {
     private final ApprovalValidationService approvalValidationService = mock(ApprovalValidationService.class);
     private final IdempotencyService idempotencyService = mock(IdempotencyService.class);
     private final TransactionLedgerService transactionLedgerService = mock(TransactionLedgerService.class);
-    private final PgTransactionIdGenerator pgTransactionIdGenerator = mock(PgTransactionIdGenerator.class);
-    private final PgApprovalFacade facade =
-            new PgApprovalFacade(
+    private final PaymentTransactionIdGenerator paymentTransactionIdGenerator = mock(PaymentTransactionIdGenerator.class);
+    private final PaymentApprovalFacade facade =
+            new PaymentApprovalFacade(
                     acquirerRoutingService,
                     approvalMapper,
                     cardAuthorizationRequestFactory,
                     approvalValidationService,
                     idempotencyService,
                     transactionLedgerService,
-                    pgTransactionIdGenerator
+                    paymentTransactionIdGenerator
             );
 
     @Test
@@ -108,7 +108,7 @@ class PgApprovalFacadeTest {
                 .build();
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
-        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
+        when(paymentTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
         when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService());
         when(transactionLedgerService.createPendingTransaction(
                 request,
@@ -202,7 +202,7 @@ class PgApprovalFacadeTest {
                 .build();
 
         when(idempotencyService.findExistingTransaction("M202603190002")).thenReturn(Optional.empty());
-        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190002ABCDEF");
+        when(paymentTransactionIdGenerator.generate()).thenReturn("PG202603190002ABCDEF");
         when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService2());
         when(transactionLedgerService.createPendingTransaction(
                 request,
@@ -292,7 +292,7 @@ class PgApprovalFacadeTest {
 
         assertEquals("PG202603190001ABCDEF", response.getPgTransactionId());
         assertTrue(response.isApproved());
-        verifyNoInteractions(acquirerRoutingService, transactionLedgerService, pgTransactionIdGenerator);
+        verifyNoInteractions(acquirerRoutingService, transactionLedgerService, paymentTransactionIdGenerator);
     }
 
     @Test
@@ -339,7 +339,7 @@ class PgApprovalFacadeTest {
                 .build();
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
-        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
+        when(paymentTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
         when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService());
         when(transactionLedgerService.createPendingTransaction(
                 request,
@@ -393,7 +393,7 @@ class PgApprovalFacadeTest {
                 .build();
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
-        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
+        when(paymentTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
         when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService());
         when(transactionLedgerService.createPendingTransaction(
                 request,
@@ -454,7 +454,7 @@ class PgApprovalFacadeTest {
                 .build();
 
         when(idempotencyService.findExistingTransaction("M202603190001")).thenReturn(Optional.empty());
-        when(pgTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
+        when(paymentTransactionIdGenerator.generate()).thenReturn("PG202603190001ABCDEF");
         when(acquirerRoutingService.resolveRoutingTarget(request)).thenReturn(RoutingTarget.cardAuthorizationService());
         when(transactionLedgerService.createPendingTransaction(
                 request,

@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.UUID;
 
 @Component
-public class PgTransactionIdGenerator {
+public class PaymentTransactionIdGenerator {
 
     private static final DateTimeFormatter PG_TX_TIMESTAMP = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 

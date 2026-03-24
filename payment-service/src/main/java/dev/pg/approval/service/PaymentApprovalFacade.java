@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 import java.util.Optional;
 
 @Service
-public class PgApprovalFacade {
+public class PaymentApprovalFacade {
 
     private final AcquirerRoutingService acquirerRoutingService;
     private final ApprovalMapper approvalMapper;
@@ -26,16 +26,16 @@ public class PgApprovalFacade {
     private final ApprovalValidationService approvalValidationService;
     private final IdempotencyService idempotencyService;
     private final TransactionLedgerService transactionLedgerService;
-    private final PgTransactionIdGenerator pgTransactionIdGenerator;
+    private final PaymentTransactionIdGenerator paymentTransactionIdGenerator;
 
-    public PgApprovalFacade(
+    public PaymentApprovalFacade(
             AcquirerRoutingService acquirerRoutingService,
             ApprovalMapper approvalMapper,
             CardAuthorizationRequestFactory cardAuthorizationRequestFactory,
             ApprovalValidationService approvalValidationService,
             IdempotencyService idempotencyService,
             TransactionLedgerService transactionLedgerService,
-            PgTransactionIdGenerator pgTransactionIdGenerator
+            PaymentTransactionIdGenerator paymentTransactionIdGenerator
     ) {
         this.acquirerRoutingService = acquirerRoutingService;
         this.approvalMapper = approvalMapper;
@@ -43,7 +43,7 @@ public class PgApprovalFacade {
         this.approvalValidationService = approvalValidationService;
         this.idempotencyService = idempotencyService;
         this.transactionLedgerService = transactionLedgerService;
-        this.pgTransactionIdGenerator = pgTransactionIdGenerator;
+        this.paymentTransactionIdGenerator = paymentTransactionIdGenerator;
     }
 
     public MerchantApprovalResponse approve(MerchantApprovalRequest request) {
@@ -55,7 +55,7 @@ public class PgApprovalFacade {
             return approvalMapper.toMerchantApprovalResponse(existingTransaction.get());
         }
 
-        String pgTransactionId = pgTransactionIdGenerator.generate();
+        String pgTransactionId = paymentTransactionIdGenerator.generate();
         RoutingTarget routingTarget = acquirerRoutingService.resolveRoutingTarget(request);
         PaymentTransaction transaction = transactionLedgerService.createPendingTransaction(
                 request,
