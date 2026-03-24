@@ -1,20 +1,25 @@
-# AGENTS.md — bank-service
+﻿# AGENTS.md - bank-service
 
 ## Role
 
-은행 역할의 **테스트 스텁 서비스**. 두 acquirer(A, B) 모두가 호출하며, 이 서비스의 코드를 수정하지 않는다.
+공유 은행 스텁 서비스. 카드 계좌 잔액 조회와 출금을 담당한다.
 
-## API
+## Current Position
 
-```
-POST /api/account/balance   → 잔액 조회 (카드번호 기반 계좌 매핑)
-POST /api/account/debit     → 출금 처리 (비관적 락으로 동시성 제어)
-```
+`payment-service` 분리 작업과 `ledger-service`, `settlement-service` 신설의 직접 수정 대상은 아니다.
 
-## Phase 6 영향
+## Allowed Changes
 
-card_account_mappings 테이블에 7장 카드 전체가 매핑되어 있으므로, 어느 acquirer가 호출하든 정상 동작한다. 변경 필요 없음.
+- 다른 서비스와의 호환성을 유지하기 위한 최소 수정
+- 테스트/문서 보정
 
-## Tech
+## Avoid
 
-Spring Boot 3.2.0 / MySQL (bank_db) / Port 8080 / common 모듈 의존
+- 정산 서비스 로직을 bank-service 내부로 이동
+- payment/ledger 책임을 흡수하는 변경
+- API 계약 변경
+
+## API Contract
+
+- 계좌 조회와 출금 API는 기존 계약을 유지한다.
+- 두 acquirer가 동일 bank-service를 공유한다.
