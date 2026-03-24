@@ -2,6 +2,8 @@ package dev.pg.approval.service;
 
 import dev.pg.approval.mapper.ApprovalMapper;
 import dev.pg.approval.mapper.CardAuthorizationRequestFactory;
+import dev.pg.client.LedgerClient;
+import dev.pg.client.dto.CreateLedgerTransactionRequest;
 import dev.pg.client.support.CardAuthorizationClientException;
 import dev.pg.client.support.CardAuthorizationErrorType;
 import dev.pg.dto.CardAuthorizationRequest;
@@ -13,10 +15,12 @@ import dev.pg.ledger.service.IdempotencyService;
 import dev.pg.ledger.service.TransactionLedgerService;
 import dev.pg.routing.model.RoutingTarget;
 import dev.pg.routing.service.AcquirerRoutingService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
 
+@Slf4j
 @Service
 public class PaymentApprovalFacade {
 
@@ -26,6 +30,7 @@ public class PaymentApprovalFacade {
     private final ApprovalValidationService approvalValidationService;
     private final IdempotencyService idempotencyService;
     private final TransactionLedgerService transactionLedgerService;
+    private final LedgerClient ledgerClient;
     private final PaymentTransactionIdGenerator paymentTransactionIdGenerator;
 
     public PaymentApprovalFacade(
@@ -35,6 +40,7 @@ public class PaymentApprovalFacade {
             ApprovalValidationService approvalValidationService,
             IdempotencyService idempotencyService,
             TransactionLedgerService transactionLedgerService,
+            LedgerClient ledgerClient,
             PaymentTransactionIdGenerator paymentTransactionIdGenerator
     ) {
         this.acquirerRoutingService = acquirerRoutingService;
@@ -43,6 +49,7 @@ public class PaymentApprovalFacade {
         this.approvalValidationService = approvalValidationService;
         this.idempotencyService = idempotencyService;
         this.transactionLedgerService = transactionLedgerService;
+        this.ledgerClient = ledgerClient;
         this.paymentTransactionIdGenerator = paymentTransactionIdGenerator;
     }
 
@@ -69,9 +76,11 @@ public class PaymentApprovalFacade {
             PaymentTransaction updatedTransaction = cardResponse.isApproved()
                     ? transactionLedgerService.markApproved(transaction, cardResponse)
                     : transactionLedgerService.markFailed(transaction, cardResponse);
+            syncLedgerTransaction(updatedTransaction);
             return approvalMapper.toMerchantApprovalResponse(updatedTransaction);
         } catch (CardAuthorizationClientException e) {
             PaymentTransaction failedTransaction = handleClientFailure(transaction, e);
+            syncLedgerTransaction(failedTransaction);
             return approvalMapper.toMerchantApprovalResponse(failedTransaction);
         }
     }
@@ -85,5 +94,26 @@ public class PaymentApprovalFacade {
         }
 
         return transactionLedgerService.markFailed(transaction, "96", exception.getMessage());
+    }
+
+    private void syncLedgerTransaction(PaymentTransaction transaction) {
+        try {
+            ledgerClient.syncTransaction(CreateLedgerTransactionRequest.builder()
+                    .pgTransactionId(transaction.getPgTransactionId())
+                    .merchantTransactionId(transaction.getMerchantTransactionId())
+                    .merchantId(transaction.getMerchantId())
+                    .amount(transaction.getAmount())
+                    .currency(transaction.getCurrency())
+                    .approvalStatus(transaction.getApprovalStatus())
+                    .settlementStatus(transaction.getSettlementStatus())
+                    .acquirerType(transaction.getAcquirerType().name())
+                    .responseCode(transaction.getResponseCode())
+                    .message(transaction.getMessage())
+                    .approvalNumber(transaction.getApprovalNumber())
+                    .approvedAt(transaction.getApprovedAt())
+                    .build());
+        } catch (RuntimeException exception) {
+            log.warn("Failed to sync transaction to ledger-service. pgTransactionId={}", transaction.getPgTransactionId(), exception);
+        }
     }
 }
