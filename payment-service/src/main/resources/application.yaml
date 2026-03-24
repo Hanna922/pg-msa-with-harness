@@ -1,6 +1,6 @@
 spring:
   application:
-    name: pg-service
+    name: payment-service
   datasource:
     url: ${PG_DATASOURCE_URL:jdbc:h2:file:./pg-service-data/pgdb;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE}
     username: ${PG_DATASOURCE_USERNAME:sa}
