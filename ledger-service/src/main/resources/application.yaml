@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: ledger-service
+  datasource:
+    url: ${MYSQL_URL:jdbc:h2:mem:ledger_db;MODE=MySQL}
+    username: ${MYSQL_USER:sa}
+    password: ${MYSQL_PASSWORD:}
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+server:
+  port: 8082
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true

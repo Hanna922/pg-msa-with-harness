@@ -34,4 +34,4 @@ pg-service-data/
 .worktrees/
 
 # Local Gradle cache used inside worktrees
-.gradle-user-home/
+.gradle-user-home*/
