@@ -491,7 +491,7 @@ spring:
     jdbc:
       initialize-schema: always
 settlement:
-  fee-rate: 0.025
+  fee-rate: 0.03
   schedule:
     cron: 0 0 2 * * *
 ```
@@ -565,7 +565,7 @@ Expected: FAIL
 
 Minimum rule:
 ```java
-feeAmount = amount.multiply(new BigDecimal("0.025"));
+feeAmount = amount.multiply(new BigDecimal("0.03"));
 netAmount = amount.subtract(feeAmount);
 ```
 

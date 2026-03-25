@@ -17,6 +17,9 @@ spring:
 server:
   port: 8083
 
+settlement:
+  fee-rate: ${SETTLEMENT_FEE_RATE:0.03}
+
 eureka:
   client:
     service-url:
