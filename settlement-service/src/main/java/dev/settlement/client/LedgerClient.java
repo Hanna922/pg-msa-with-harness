@@ -1,6 +1,8 @@
 package dev.settlement.client;
 
 import dev.settlement.client.dto.LedgerTransactionResponse;
+import dev.settlement.client.dto.SettlementStatus;
+import dev.settlement.client.dto.UpdateSettlementStatusRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +28,13 @@ public class LedgerClient {
                 settlementStatus,
                 approvedFrom,
                 approvedTo
+        );
+    }
+
+    public void markTransactionAsSettled(String pgTransactionId) {
+        ledgerServiceClient.updateSettlementStatus(
+                pgTransactionId,
+                new UpdateSettlementStatusRequest(SettlementStatus.SETTLED)
         );
     }
 }
