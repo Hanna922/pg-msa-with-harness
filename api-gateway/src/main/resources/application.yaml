@@ -10,6 +10,18 @@ spring:
               uri: lb://merchant-service
               predicates:
                 - Path=/api/merchant/**
+            - id: payment-service-route
+              uri: lb://payment-service
+              predicates:
+                - Path=/api/payments/**
+            - id: ledger-service-route
+              uri: lb://ledger-service
+              predicates:
+                - Path=/api/ledger/**
+            - id: settlement-service-route
+              uri: lb://settlement-service
+              predicates:
+                - Path=/api/settlements/**
 
 eureka:
   client:

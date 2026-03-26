@@ -78,6 +78,7 @@ settlement-service
 - `ledger-service`는 거래 이력 보관과 조회를 책임진다.
 - `settlement-service`는 정산 집계와 배치를 책임진다.
 - 서비스 간 계약은 DTO/API로 분리하고 각 서비스는 자체 DB를 가진다.
+- `payment-service`와 `ledger-service`의 정산 상태 계약은 `NOT_READY`, `READY`, `SETTLED`로 통일한다.
 - 동기 REST 기반으로 먼저 구현하되, 이후 이벤트 기반으로 치환 가능한 경계를 남긴다.
 
 ---
@@ -399,6 +400,8 @@ settlement-service가 정산 상태를 갱신한다.
 4. `SettlementTransaction` 생성
 5. 성공 시 `ledger-service`에 정산 상태 갱신 요청
 6. 정산 조회 API에서 결과 제공
+
+1차 구현의 기본 수수료율은 고정 3%를 사용한다.
 
 ---
 

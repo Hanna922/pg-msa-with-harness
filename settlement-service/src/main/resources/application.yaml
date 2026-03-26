@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: settlement-service
+  datasource:
+    url: ${MYSQL_URL:jdbc:h2:mem:settlement_db;MODE=MySQL}
+    username: ${MYSQL_USER:sa}
+    password: ${MYSQL_PASSWORD:}
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+  batch:
+    jdbc:
+      initialize-schema: always
+
+server:
+  port: 8083
+
+settlement:
+  fee-rate: ${SETTLEMENT_FEE_RATE:0.03}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true

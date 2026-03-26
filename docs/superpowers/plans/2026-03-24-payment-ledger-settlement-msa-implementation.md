@@ -6,6 +6,8 @@
 
 **Architecture:** `payment-service` remains the real-time authorization orchestrator and source of truth for approval status. `ledger-service` stores a read-optimized transaction history copy for operations and settlement input. `settlement-service` runs batch aggregation against `ledger-service` and updates ledger settlement state after successful processing.
 
+**Contract Note:** `payment-service` and `ledger-service` share the same public settlement status values for REST integration: `NOT_READY`, `READY`, `SETTLED`. In phase 1, keep the contract aligned directly instead of adding a mapping layer.
+
 **Tech Stack:** Java 17, Spring Boot 3.x, Spring Cloud Eureka, Spring Cloud OpenFeign, Spring Data JPA, MySQL/H2, Resilience4j, Spring Batch, Lombok, Gradle
 
 ---
@@ -489,7 +491,7 @@ spring:
     jdbc:
       initialize-schema: always
 settlement:
-  fee-rate: 0.025
+  fee-rate: 0.03
   schedule:
     cron: 0 0 2 * * *
 ```
@@ -563,7 +565,7 @@ Expected: FAIL
 
 Minimum rule:
 ```java
-feeAmount = amount.multiply(new BigDecimal("0.025"));
+feeAmount = amount.multiply(new BigDecimal("0.03"));
 netAmount = amount.subtract(feeAmount);
 ```
 

@@ -29,3 +29,9 @@ pg-service-data/
 .env.*
 !.env.example
 !**/.env.example
+
+# Local git worktrees
+.worktrees/
+
+# Local Gradle cache used inside worktrees
+.gradle-user-home*/

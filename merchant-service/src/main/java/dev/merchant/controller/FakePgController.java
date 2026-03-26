@@ -13,7 +13,7 @@ import java.util.UUID;
 @RestController
 public class FakePgController {
 
-    @PostMapping("/api/pg/approve")
+    @PostMapping("/api/payments/approve")
     public PgAuthResponse mockPgApprove(@RequestBody PgAuthRequest request) {
         PgAuthResponse response = new PgAuthResponse();
         response.setMerchantTransactionId(request.getMerchantTransactionId());
